@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SalesRouteImport } from './routes/sales'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as InventoryRouteImport } from './routes/inventory'
@@ -16,6 +17,11 @@ import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SalesRoute = SalesRouteImport.update({
   id: '/sales',
   path: '/sales',
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/inventory': typeof InventoryRoute
   '/map': typeof MapRoute
   '/sales': typeof SalesRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof InventoryRoute
   '/map': typeof MapRoute
   '/sales': typeof SalesRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,12 +79,27 @@ export interface FileRoutesById {
   '/inventory': typeof InventoryRoute
   '/map': typeof MapRoute
   '/sales': typeof SalesRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/alerts' | '/customers' | '/inventory' | '/map' | '/sales'
+  fullPaths:
+    | '/'
+    | '/alerts'
+    | '/customers'
+    | '/inventory'
+    | '/map'
+    | '/sales'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/alerts' | '/customers' | '/inventory' | '/map' | '/sales'
+  to:
+    | '/'
+    | '/alerts'
+    | '/customers'
+    | '/inventory'
+    | '/map'
+    | '/sales'
+    | '/settings'
   id:
     | '__root__'
     | '/'
@@ -85,6 +108,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/map'
     | '/sales'
+    | '/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -94,10 +118,18 @@ export interface RootRouteChildren {
   InventoryRoute: typeof InventoryRoute
   MapRoute: typeof MapRoute
   SalesRoute: typeof SalesRoute
+  SettingsRoute: typeof SettingsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sales': {
       id: '/sales'
       path: '/sales'
@@ -150,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   InventoryRoute: InventoryRoute,
   MapRoute: MapRoute,
   SalesRoute: SalesRoute,
+  SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
