@@ -14,24 +14,24 @@ export const regions: {
   id: string;
   name: string;
   country: string;
-  x: number; // SVG % within viewBox
+  x: number; // pixel coords within 1408x787 map image
   y: number;
   level: AlertLevel;
   partners: number;
   sales: number;
 }[] = [
-  { id: "abuja", name: "Abuja DC", country: "Nigeria", x: 540, y: 360, level: "active", partners: 42, sales: 4_120_000 },
-  { id: "lagos", name: "Lagos", country: "Nigeria", x: 470, y: 430, level: "active", partners: 68, sales: 6_840_000 },
-  { id: "kano", name: "Kano", country: "Nigeria", x: 555, y: 285, level: "warning", partners: 31, sales: 2_410_000 },
-  { id: "ibadan", name: "Ibadan", country: "Nigeria", x: 485, y: 410, level: "active", partners: 24, sales: 1_980_000 },
-  { id: "adamawa", name: "Adamawa", country: "Nigeria", x: 640, y: 335, level: "critical", partners: 14, sales: 720_000 },
-  { id: "ph", name: "Port Harcourt", country: "Nigeria", x: 540, y: 470, level: "active", partners: 27, sales: 2_100_000 },
-  { id: "taraba", name: "Taraba", country: "Nigeria", x: 620, y: 380, level: "warning", partners: 11, sales: 540_000 },
-  { id: "liberia", name: "Monrovia", country: "Liberia", x: 285, y: 470, level: "active", partners: 9, sales: 480_000 },
-  { id: "ghana", name: "Accra", country: "Ghana", x: 390, y: 470, level: "calm", partners: 6, sales: 220_000 },
-  { id: "cameroon", name: "Douala", country: "Cameroon", x: 660, y: 460, level: "warning", partners: 8, sales: 360_000 },
-  { id: "sierra", name: "Freetown", country: "Sierra Leone", x: 260, y: 430, level: "calm", partners: 4, sales: 140_000 },
-  { id: "niger", name: "Niamey", country: "Niger", x: 470, y: 250, level: "calm", partners: 5, sales: 180_000 },
+  { id: "abuja", name: "Abuja DC", country: "Nigeria", x: 628, y: 322, level: "active", partners: 42, sales: 4_120_000 },
+  { id: "lagos", name: "Lagos", country: "Nigeria", x: 588, y: 360, level: "active", partners: 68, sales: 6_840_000 },
+  { id: "kano", name: "Kano", country: "Nigeria", x: 638, y: 278, level: "warning", partners: 31, sales: 2_410_000 },
+  { id: "ibadan", name: "Ibadan", country: "Nigeria", x: 598, y: 352, level: "active", partners: 24, sales: 1_980_000 },
+  { id: "adamawa", name: "Adamawa", country: "Nigeria", x: 690, y: 328, level: "critical", partners: 14, sales: 720_000 },
+  { id: "ph", name: "Port Harcourt", country: "Nigeria", x: 622, y: 378, level: "active", partners: 27, sales: 2_100_000 },
+  { id: "taraba", name: "Taraba", country: "Nigeria", x: 676, y: 338, level: "warning", partners: 11, sales: 540_000 },
+  { id: "liberia", name: "Monrovia", country: "Liberia", x: 452, y: 368, level: "active", partners: 9, sales: 480_000 },
+  { id: "ghana", name: "Accra", country: "Ghana", x: 558, y: 372, level: "calm", partners: 6, sales: 220_000 },
+  { id: "cameroon", name: "Douala", country: "Cameroon", x: 660, y: 398, level: "warning", partners: 8, sales: 360_000 },
+  { id: "sierra", name: "Freetown", country: "Sierra Leone", x: 436, y: 342, level: "calm", partners: 4, sales: 140_000 },
+  { id: "niger", name: "Niamey", country: "Niger", x: 580, y: 278, level: "calm", partners: 5, sales: 180_000 },
 ];
 
 export const partnerSalesByRegion = [
