@@ -1,13 +1,14 @@
-import { useState } from "react";
-import { regions, type AlertLevel } from "@/lib/dashboard-data";
-import { cn } from "@/lib/utils";
-import africaMapAsset from "@/assets/africa-map.png.asset.json";
+import { useEffect, useState } from "react";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, LayersControl, LayerGroup } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { regions, customerPoints, type AlertLevel } from "@/lib/dashboard-data";
 
-const levelColor: Record<AlertLevel, string> = {
-  critical: "text-destructive",
-  warning: "text-warn",
-  active: "text-brand-green",
-  calm: "text-muted-foreground",
+const dotFill: Record<AlertLevel, string> = {
+  critical: "#ef4444",
+  warning: "#f59e0b",
+  active: "#2fcb6e",
+  calm: "#94a3b8",
 };
 
 const levelLabel: Record<AlertLevel, string> = {
@@ -17,166 +18,168 @@ const levelLabel: Record<AlertLevel, string> = {
   calm: "Calm",
 };
 
-const dotFill: Record<AlertLevel, string> = {
-  critical: "#ef4444",
-  warning: "#f59e0b",
-  active: "#2fcb6e",
-  calm: "#94a3b8",
-};
-
-// Image is 1408x787; we use that as the viewBox so dot coords line up.
-const VB_W = 1408;
-const VB_H = 787;
-
 interface Props {
   variant?: "compact" | "full";
 }
 
 export function AfricaMap({ variant = "compact" }: Props) {
-  const [hoverDot, setHoverDot] = useState<string | null>(null);
-  const focusDot = regions.find((r) => r.id === hoverDot);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const height = variant === "full" ? 620 : 460;
+
+  if (!mounted) {
+    return (
+      <div
+        className="w-full rounded-lg border border-border bg-muted/30"
+        style={{ height }}
+      />
+    );
+  }
 
   return (
     <div
       className="relative w-full overflow-hidden rounded-lg border border-border"
-      style={{ background: "#f0f4f8" }}
+      style={{ height, background: "#f0f4f8" }}
     >
-      <div className="relative w-full" style={{ aspectRatio: `${VB_W} / ${VB_H}` }}>
-        <img
-          src={africaMapAsset.url}
-          alt="Map of Africa"
-          className={cn(
-            "absolute inset-0 h-full w-full object-contain select-none",
-            variant === "full" ? "" : "",
-          )}
-          draggable={false}
-        />
-        <svg
-          viewBox={`0 0 ${VB_W} ${VB_H}`}
-          className="absolute inset-0 h-full w-full"
-          role="img"
-          aria-label="Partner activity overlay"
-        >
-          {/* Nigeria emphasis ring */}
-          <circle
-            cx={628}
-            cy={335}
-            r={78}
-            fill="none"
-            stroke="#11455b"
-            strokeWidth={2.5}
-            strokeDasharray="6 5"
-            opacity={0.7}
-          />
+      <MapContainer
+        center={[8.5, 8.5]}
+        zoom={4}
+        minZoom={3}
+        maxZoom={12}
+        scrollWheelZoom
+        style={{ height: "100%", width: "100%" }}
+        worldCopyJump={false}
+        maxBounds={L.latLngBounds([-10, -25], [30, 30])}
+      >
+        <LayersControl position="topright">
+          <LayersControl.BaseLayer checked name="Light">
+            <TileLayer
+              attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap'
+              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="Satellite">
+            <TileLayer
+              attribution="Tiles &copy; Esri"
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            />
+          </LayersControl.BaseLayer>
 
-          {regions.map((r) => {
-            const isHover = hoverDot === r.id;
-            const color = dotFill[r.level];
-            const isNigeria = r.country === "Nigeria";
-            const baseR = isNigeria ? 11 : 9;
-            const hoverR = baseR + 3;
-            return (
-              <g
-                key={r.id}
-                onMouseEnter={() => setHoverDot(r.id)}
-                onMouseLeave={() =>
-                  setHoverDot((cur) => (cur === r.id ? null : cur))
-                }
-                className="cursor-pointer"
-              >
-                {r.level === "critical" && (
-                  <circle cx={r.x} cy={r.y} r={baseR} fill={color} opacity={0.5}>
-                    <animate
-                      attributeName="r"
-                      values={`${baseR};${baseR + 16};${baseR}`}
-                      dur="1.6s"
-                      repeatCount="indefinite"
-                    />
-                    <animate
-                      attributeName="opacity"
-                      values="0.6;0;0.6"
-                      dur="1.6s"
-                      repeatCount="indefinite"
-                    />
-                  </circle>
-                )}
-                <circle
-                  cx={r.x}
-                  cy={r.y}
-                  r={isHover ? hoverR : baseR}
-                  fill={color}
-                  stroke="#ffffff"
-                  strokeWidth={2.5}
-                  style={{ transition: "r 150ms" }}
-                />
-                <text
-                  x={r.x}
-                  y={r.y - (isHover ? hoverR + 5 : baseR + 5)}
-                  textAnchor="middle"
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    fill: "#11455b",
-                    paintOrder: "stroke",
-                    stroke: "#ffffff",
-                    strokeWidth: 3,
-                    pointerEvents: "none",
-                  }}
-                >
-                  {r.name.replace(" DC", "")}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
+          <LayersControl.Overlay checked name="Distribution Centers">
+            <LayerGroup>
+              {regions.map((r) => {
+                const color = dotFill[r.level];
+                const isNigeria = r.country === "Nigeria";
+                const radius = isNigeria ? 11 : 9;
+                return (
+                  <CircleMarker
+                    key={r.id}
+                    center={[r.lat, r.lng]}
+                    radius={radius}
+                    pathOptions={{
+                      color: "#ffffff",
+                      weight: 2.5,
+                      fillColor: color,
+                      fillOpacity: 1,
+                      className: r.level === "critical" ? "pulse-marker" : undefined,
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -radius]} opacity={1}>
+                      <strong>{r.name}</strong> · {r.country}
+                    </Tooltip>
+                    <Popup>
+                      <div style={{ minWidth: 180 }}>
+                        <div style={{ fontWeight: 700, color: "#11455b" }}>{r.name}</div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>
+                          {r.country} · Distribution Center
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 6,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            color,
+                          }}
+                        >
+                          {levelLabel[r.level]}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 12 }}>
+                          <div>Partners: <strong>{r.partners}</strong></div>
+                          <div>Sales: <strong>₦{(r.sales / 1_000_000).toFixed(2)}M</strong></div>
+                        </div>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
+            </LayerGroup>
+          </LayersControl.Overlay>
+
+          <LayersControl.Overlay checked name="Customers (by state)">
+            <LayerGroup>
+              {customerPoints.map((c) => {
+                const color = c.type === "new" ? "#2fcb6e" : "#11455b";
+                return (
+                  <CircleMarker
+                    key={c.id}
+                    center={[c.lat, c.lng]}
+                    radius={5}
+                    pathOptions={{
+                      color: "#ffffff",
+                      weight: 1.5,
+                      fillColor: color,
+                      fillOpacity: 0.95,
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -5]}>
+                      <strong>{c.name}</strong> · {c.state}
+                    </Tooltip>
+                    <Popup>
+                      <div style={{ minWidth: 160 }}>
+                        <div style={{ fontWeight: 700, color: "#11455b" }}>{c.name}</div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>{c.state} State</div>
+                        <div style={{ marginTop: 4, fontSize: 12 }}>
+                          Type: <strong style={{ color }}>{c.type === "new" ? "New" : "Returning"}</strong>
+                        </div>
+                        <div style={{ fontSize: 12 }}>Orders: <strong>{c.orders}</strong></div>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
+            </LayerGroup>
+          </LayersControl.Overlay>
+        </LayersControl>
+      </MapContainer>
 
       {/* Legend */}
-      <div className="absolute left-3 bottom-3 flex flex-wrap gap-2 rounded-md bg-white/95 p-2 text-[11px] shadow-sm">
-        {(["critical", "warning", "active", "calm"] as AlertLevel[]).map((lvl) => (
-          <div key={lvl} className="flex items-center gap-1.5">
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ background: dotFill[lvl] }}
-            />
-            <span className="capitalize text-muted-foreground">{lvl}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Tooltip */}
-      {focusDot && (
-        <div className="absolute bottom-3 right-3 min-w-[220px] rounded-lg border border-border bg-card p-3 shadow-md animate-fade-in">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-foreground">
-              {focusDot.name}
-            </span>
-            <span
-              className={cn(
-                "text-[10px] font-bold uppercase tracking-wider",
-                levelColor[focusDot.level],
-              )}
-            >
-              {levelLabel[focusDot.level]}
-            </span>
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            {focusDot.country} · Distribution Center
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <div className="text-muted-foreground">Partners</div>
-              <div className="font-semibold text-foreground">{focusDot.partners}</div>
+      <div className="pointer-events-none absolute left-3 bottom-3 z-[400] flex flex-col gap-1.5 rounded-md bg-white/95 p-2 text-[11px] shadow-sm">
+        <div className="font-semibold text-foreground">Distribution status</div>
+        <div className="flex flex-wrap gap-2">
+          {(["critical", "warning", "active", "calm"] as AlertLevel[]).map((lvl) => (
+            <div key={lvl} className="flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ background: dotFill[lvl] }}
+              />
+              <span className="capitalize text-muted-foreground">{lvl}</span>
             </div>
-            <div>
-              <div className="text-muted-foreground">Sales</div>
-              <div className="font-semibold text-foreground">
-                ₦{(focusDot.sales / 1_000_000).toFixed(2)}M
-              </div>
-            </div>
+          ))}
+        </div>
+        <div className="mt-1 font-semibold text-foreground">Customers</div>
+        <div className="flex gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#2fcb6e" }} />
+            <span className="text-muted-foreground">New</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#11455b" }} />
+            <span className="text-muted-foreground">Returning</span>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
