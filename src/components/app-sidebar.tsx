@@ -7,8 +7,8 @@ import {
   Users,
   Siren,
   Settings as SettingsIcon,
-  Sprout,
 } from "lucide-react";
+import logoAsset from "@/assets/farm-alert-logo.jpg.asset.json";
 
 import {
   Sidebar,
@@ -40,12 +40,12 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2.5 px-2 py-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-brand-green text-brand-green-foreground">
-            <Sprout className="h-5 w-5" />
+          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-brand-navy">
+            <img src={logoAsset.url} alt="Farm Alert" className="h-full w-full object-cover" />
           </div>
           <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
             <span className="text-sm font-semibold text-sidebar-foreground">Farm Alert</span>
-            <span className="text-[11px] text-sidebar-foreground/60">CEO Dashboard</span>
+            <span className="text-[11px] text-sidebar-foreground/60">Envisioning Animal Health</span>
           </div>
         </div>
       </SidebarHeader>
