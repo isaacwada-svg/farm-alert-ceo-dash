@@ -15,6 +15,7 @@ const label: Record<StockStatus, string> = {
 
 export function InventoryTable({ rows }: { rows?: { sku: string; product: string; center: string; qty: number; status: StockStatus }[] }) {
   const data = rows && rows.length > 0 ? rows : mockInventory;
+  return (
     <div className="overflow-hidden rounded-lg border border-border">
       <table className="w-full text-sm">
         <thead className="bg-muted/60 text-left">
