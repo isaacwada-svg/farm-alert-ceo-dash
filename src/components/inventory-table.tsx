@@ -27,7 +27,7 @@ export function InventoryTable({ rows }: { rows?: { sku: string; product: string
           </tr>
         </thead>
         <tbody>
-          {inventory.map((row) => (
+          {data.map((row) => (
             <tr key={row.sku} className="border-t border-border last:border-b-0 hover:bg-muted/30">
               <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{row.sku}</td>
               <td className="px-4 py-3 font-medium text-foreground">{row.product}</td>
