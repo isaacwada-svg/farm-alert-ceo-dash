@@ -1,4 +1,4 @@
-import { inventory, type StockStatus } from "@/lib/dashboard-data";
+import { inventory as mockInventory, type StockStatus } from "@/lib/dashboard-data";
 import { cn } from "@/lib/utils";
 
 const badge: Record<StockStatus, string> = {
@@ -13,7 +13,8 @@ const label: Record<StockStatus, string> = {
   ok: "In Stock",
 };
 
-export function InventoryTable() {
+export function InventoryTable({ rows }: { rows?: { sku: string; product: string; center: string; qty: number; status: StockStatus }[] }) {
+  const data = rows && rows.length > 0 ? rows : mockInventory;
   return (
     <div className="overflow-hidden rounded-lg border border-border">
       <table className="w-full text-sm">
@@ -27,7 +28,7 @@ export function InventoryTable() {
           </tr>
         </thead>
         <tbody>
-          {inventory.map((row) => (
+          {data.map((row) => (
             <tr key={row.sku} className="border-t border-border last:border-b-0 hover:bg-muted/30">
               <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{row.sku}</td>
               <td className="px-4 py-3 font-medium text-foreground">{row.product}</td>

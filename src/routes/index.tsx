@@ -19,9 +19,10 @@ import { InventoryTable } from "@/components/inventory-table";
 import {
   kpis,
   formatNaira,
-  outOfStockByCenter,
+  outOfStockByCenter as mockOosByCenter,
   redAlerts,
 } from "@/lib/dashboard-data";
+import { useErpOverview } from "@/hooks/use-erp-overview";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -35,6 +36,21 @@ export const Route = createFileRoute("/")({
 });
 
 function OverviewPage() {
+  const { data: erp, dataUpdatedAt, isFetching, isError } = useErpOverview();
+  const live = erp && erp.ok ? erp : null;
+
+  const totalSalesToday = live ? live.totalSalesToday : kpis.totalSalesToday.value;
+  const outOfStockCount = live
+    ? live.inventory.filter((i) => i.status === "out").length
+    : kpis.outOfStockCount;
+  const returningCount = live ? live.returningCustomers : kpis.activeReturningCustomers.value;
+  const newCustomers = live ? live.newCustomersThisWeek : kpis.newCustomers.value;
+  const oosByCenter = live && live.outOfStockByCenter.length > 0 ? live.outOfStockByCenter : mockOosByCenter;
+
+  const lastUpdated = dataUpdatedAt
+    ? new Date(dataUpdatedAt).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "—";
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -45,9 +61,21 @@ function OverviewPage() {
             Here's how Farm Alert is performing across the network today.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="inline-flex h-2 w-2 rounded-full bg-brand-green" />
-          Live data · refreshed 2 min ago
+        <div className="flex items-center gap-2 text-xs">
+          <span
+            className={cn(
+              "inline-flex h-2 w-2 rounded-full",
+              isError ? "bg-destructive" : live ? "bg-brand-green" : "bg-warn",
+            )}
+          />
+          <span className="text-muted-foreground">
+            {isError
+              ? "ERP unreachable · showing last known"
+              : live
+                ? `Live ERP · updated ${lastUpdated}`
+                : "Connecting to ERP…"}
+            {isFetching && live ? " · refreshing" : ""}
+          </span>
         </div>
       </div>
 
@@ -55,22 +83,22 @@ function OverviewPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="Total Sales Today"
-          value={formatNaira(kpis.totalSalesToday.value)}
+          value={formatNaira(totalSalesToday)}
           delta={kpis.totalSalesToday.delta}
-          hint="vs yesterday"
+          hint={live ? `${live.invoiceCountToday} invoices today` : "vs yesterday"}
           icon={<Banknote className="h-4 w-4" />}
           tone="green"
         />
         <KpiCard
           label="Out of Stock Items"
-          value={kpis.outOfStockCount}
-          hint="across 8 centers"
+          value={outOfStockCount}
+          hint={live ? "from live stock balance" : "across 8 centers"}
           icon={<PackageX className="h-4 w-4" />}
           tone="destructive"
         />
         <KpiCard
           label="Active / Returning Customers"
-          value={kpis.activeReturningCustomers.value.toLocaleString()}
+          value={returningCount.toLocaleString()}
           delta={kpis.activeReturningCustomers.delta}
           hint="last 30 days"
           icon={<Users className="h-4 w-4" />}
@@ -78,7 +106,7 @@ function OverviewPage() {
         />
         <KpiCard
           label="New Customers"
-          value={kpis.newCustomers.value}
+          value={newCustomers}
           delta={kpis.newCustomers.delta}
           hint="this week"
           icon={<UserPlus className="h-4 w-4" />}
@@ -108,9 +136,11 @@ function OverviewPage() {
 
         <div className="rounded-xl border border-border bg-card p-5">
           <h2 className="text-base font-semibold text-foreground">Out of Stock by Center</h2>
-          <p className="text-xs text-muted-foreground">All distribution centers · today</p>
+          <p className="text-xs text-muted-foreground">
+            {live ? "Live from ERP Stock Balance" : "All distribution centers · today"}
+          </p>
           <ul className="mt-4 divide-y divide-border">
-            {outOfStockByCenter.map((c) => (
+            {oosByCenter.map((c) => (
               <li key={c.center} className="flex items-center justify-between py-2.5 text-sm">
                 <span className="text-foreground">{c.center}</span>
                 <span
@@ -142,7 +172,7 @@ function OverviewPage() {
               <p className="text-xs text-muted-foreground">By region · this month (₦M)</p>
             </div>
           </div>
-          <PartnerSalesChart />
+          <PartnerSalesChart data={live?.partnerSalesByRegion} />
         </div>
 
         <div className="rounded-xl border border-border bg-card p-5">
@@ -161,11 +191,11 @@ function OverviewPage() {
             <div>
               <h2 className="text-base font-semibold text-foreground">Inventory Status</h2>
               <p className="text-xs text-muted-foreground">
-                Critical SKUs across all centers
+                {live ? "Live from ERP Stock Balance report" : "Critical SKUs across all centers"}
               </p>
             </div>
           </div>
-          <InventoryTable />
+          <InventoryTable rows={live?.inventory} />
         </div>
 
         <div className="rounded-xl border border-border bg-card p-5">
@@ -191,15 +221,14 @@ function OverviewPage() {
               </span>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-brand-navy-foreground/85">
-              Today's network revenue is <strong className="text-brand-green">{formatNaira(kpis.totalSalesToday.value)}</strong>,
-              up <strong>{kpis.totalSalesToday.delta}%</strong> versus yesterday — driven primarily by
-              Lagos (₦6.84M) and Abuja (₦4.12M) zones. However, <strong className="text-warn">Adamawa and Taraba</strong> are
-              flagged as critical: Newcastle Vaccine and Ivermectin Pour-on hit zero stock,
-              with 3 partners reporting a suspected outbreak in Taraba. Forecasted demand
-              next week rises <strong>~6%</strong> — recommend immediate replenishment from
-              the Abuja DC and an outbound call from the veterinary team to affected partners.
-              Customer acquisition is healthy: <strong>{kpis.newCustomers.value} new</strong> sign-ups
-              this week (+{kpis.newCustomers.delta}%).
+              Today's network revenue is <strong className="text-brand-green">{formatNaira(totalSalesToday)}</strong>
+              {live ? ` from ${live.invoiceCountToday} invoices` : ""} — outstanding receivables sit at{" "}
+              <strong>{formatNaira(live?.outstandingTotal ?? 0)}</strong>. Top performing zone is{" "}
+              <strong>{live?.partnerSalesByRegion[0]?.region ?? "Lagos"}</strong>. {outOfStockCount > 0 ? (
+                <>Currently <strong className="text-warn">{outOfStockCount}</strong> SKUs are at zero stock — recommend immediate replenishment from the Abuja DC.</>
+              ) : (
+                <>All centers are healthy on stock.</>
+              )} New customer acquisition this week: <strong>{newCustomers}</strong>.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <button className="inline-flex items-center gap-1.5 rounded-md bg-brand-green px-3 py-1.5 text-xs font-semibold text-brand-green-foreground hover:opacity-90">

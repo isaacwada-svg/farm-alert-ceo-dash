@@ -26,10 +26,11 @@ const tooltipStyle = {
   color: "var(--foreground)",
 };
 
-export function PartnerSalesChart() {
+export function PartnerSalesChart({ data }: { data?: { region: string; sales: number }[] }) {
+  const rows = data && data.length > 0 ? data : partnerSalesByRegion;
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <BarChart data={partnerSalesByRegion} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+      <BarChart data={rows} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="region" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
         <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} tickFormatter={(v) => `₦${v}M`} />
