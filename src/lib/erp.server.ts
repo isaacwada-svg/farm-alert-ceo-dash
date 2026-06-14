@@ -98,19 +98,23 @@ export type StockRow = {
   [k: string]: unknown;
 };
 
-export async function fetchStockBalance(): Promise<StockRow[]> {
+export async function fetchStockBalance(company = "FarmAlert"): Promise<StockRow[]> {
   const today = new Date().toISOString().slice(0, 10);
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const body = {
     report_name: "Stock Balance",
-    filters: { from_date: today, to_date: today, company: undefined },
+    filters: {
+      from_date: monthAgo,
+      to_date: today,
+      company,
+      valuation_field_type: "Currency",
+    },
   };
   const data = await erpFetch("/api/method/frappe.desk.query_report.run", {
     method: "POST",
     body: JSON.stringify(body),
   });
-  // Frappe returns { message: { columns, result } }
   const result = data?.message?.result ?? [];
-  // Some rows are totals/strings — keep only object rows with an item_code.
   return result.filter(
     (r: unknown): r is StockRow =>
       typeof r === "object" && r !== null && typeof (r as StockRow).item_code === "string",
