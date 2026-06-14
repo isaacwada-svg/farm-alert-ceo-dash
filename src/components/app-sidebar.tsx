@@ -86,10 +86,10 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border">
         <div className="flex items-center gap-2 px-2 py-2 group-data-[collapsible=icon]:hidden">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground">
-            AO
+            FK
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-xs font-medium text-sidebar-foreground">Adeola Okafor</span>
+            <span className="text-xs font-medium text-sidebar-foreground">Dr. Femi Kayode</span>
             <span className="text-[10px] text-sidebar-foreground/60">Chief Executive</span>
           </div>
         </div>
