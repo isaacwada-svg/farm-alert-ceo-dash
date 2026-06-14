@@ -54,6 +54,7 @@ function summarise(invoices: SalesInvoice[], stock: StockRow[]): ErpOverview {
 
   const todayInvoices = invoices.filter((i) => i.posting_date >= today);
   const totalSalesToday = todayInvoices.reduce((s, i) => s + (i.grand_total ?? 0), 0);
+  const totalRevenueAllTime = invoices.reduce((s, i) => s + (i.grand_total ?? 0), 0);
   const outstandingTotal = invoices.reduce((s, i) => s + (i.outstanding_amount ?? 0), 0);
 
   // Customer first-seen detection from invoice history we have.
