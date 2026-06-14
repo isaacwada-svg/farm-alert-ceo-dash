@@ -56,7 +56,7 @@ function OverviewPage() {
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Good morning, Adeola</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Good morning, Dr. Kayode</h1>
           <p className="text-sm text-muted-foreground">
             Here's how Farm Alert is performing across the network today.
           </p>

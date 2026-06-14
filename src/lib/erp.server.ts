@@ -2,11 +2,20 @@
 // Auth: Frappe uses `Authorization: token <api_key>:<api_secret>`.
 
 function getEnv() {
-  const baseUrl = process.env.FARMALERT_ERP_BASE_URL?.replace(/\/+$/, "");
-  const key = process.env.FARMALERT_ERP_API_KEY;
-  const secret = process.env.FARMALERT_ERP_API_SECRET;
+  let baseUrl = process.env.FARMALERT_ERP_BASE_URL?.trim();
+  const key = process.env.FARMALERT_ERP_API_KEY?.trim();
+  const secret = process.env.FARMALERT_ERP_API_SECRET?.trim();
   if (!baseUrl || !key || !secret) {
     throw new Error("FARMALERT_ERP_* env vars are not configured");
+  }
+  // Normalise: ensure scheme, strip trailing slashes, drop any desk/app path
+  // so we always hit /api/* from the site root.
+  if (!/^https?:\/\//i.test(baseUrl)) baseUrl = `https://${baseUrl}`;
+  try {
+    const u = new URL(baseUrl);
+    baseUrl = `${u.protocol}//${u.host}`;
+  } catch {
+    baseUrl = baseUrl.replace(/\/+$/, "");
   }
   return { baseUrl, key, secret };
 }
@@ -16,18 +25,30 @@ async function erpFetch(path: string, init: RequestInit = {}) {
   const url = `${baseUrl}${path}`;
   const res = await fetch(url, {
     ...init,
+    redirect: "manual",
     headers: {
       "Authorization": `token ${key}:${secret}`,
       "Accept": "application/json",
       "Content-Type": "application/json",
+      "X-Frappe-CSRF-Token": "",
       ...(init.headers ?? {}),
     },
   });
+  const text = await res.text();
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`ERP ${res.status} ${res.statusText}: ${body.slice(0, 300)}`);
+    throw new Error(`ERP ${res.status} ${res.statusText} at ${path}: ${text.slice(0, 300)}`);
   }
-  return res.json();
+  const ct = res.headers.get("content-type") ?? "";
+  if (!ct.includes("application/json")) {
+    throw new Error(
+      `ERP ${path} returned ${ct || "no content-type"} (likely auth failure / wrong URL): ${text.slice(0, 200)}`,
+    );
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`ERP ${path} returned non-JSON body: ${text.slice(0, 200)}`);
+  }
 }
 
 export type SalesInvoice = {
