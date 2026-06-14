@@ -32,6 +32,8 @@ export type ErpOverview = {
   fetchedAt: string;
   totalSalesToday: number;
   invoiceCountToday: number;
+  totalRevenueAllTime: number;
+  totalInvoicesAllTime: number;
   outstandingTotal: number;
   newCustomersThisWeek: number;
   returningCustomers: number;
