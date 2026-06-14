@@ -63,7 +63,7 @@ export type SalesInvoice = {
   territory?: string | null;
 };
 
-export async function fetchRecentSalesInvoices(limit = 200): Promise<SalesInvoice[]> {
+export async function fetchRecentSalesInvoices(limit = 0): Promise<SalesInvoice[]> {
   const fields = JSON.stringify([
     "name",
     "customer",
@@ -75,10 +75,16 @@ export async function fetchRecentSalesInvoices(limit = 200): Promise<SalesInvoic
     "set_warehouse",
     "territory",
   ]);
+  // docstatus=1 → Submitted (approved) invoices only; exclude Cancelled.
+  const filters = JSON.stringify([
+    ["docstatus", "=", 1],
+    ["status", "!=", "Cancelled"],
+  ]);
   const params = new URLSearchParams({
     fields,
+    filters,
     order_by: "posting_date desc, name desc",
-    limit_page_length: String(limit),
+    limit_page_length: String(limit), // 0 = all
   });
   const data = await erpFetch(`/api/resource/Sales Invoice?${params.toString()}`);
   return (data?.data ?? []) as SalesInvoice[];
