@@ -82,6 +82,13 @@ function OverviewPage() {
       {/* KPIs */}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
+          label="Total Revenue (All-Time)"
+          value={formatNaira(live?.totalRevenueAllTime ?? 0)}
+          hint={live ? `${live.totalInvoicesAllTime} approved invoices` : "since first invoice"}
+          icon={<Banknote className="h-4 w-4" />}
+          tone="navy"
+        />
+        <KpiCard
           label="Total Sales Today"
           value={formatNaira(totalSalesToday)}
           delta={kpis.totalSalesToday.delta}

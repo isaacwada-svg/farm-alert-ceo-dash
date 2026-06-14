@@ -63,7 +63,7 @@ export type SalesInvoice = {
   territory?: string | null;
 };
 
-export async function fetchRecentSalesInvoices(limit = 200): Promise<SalesInvoice[]> {
+export async function fetchRecentSalesInvoices(limit = 0): Promise<SalesInvoice[]> {
   const fields = JSON.stringify([
     "name",
     "customer",
@@ -75,10 +75,16 @@ export async function fetchRecentSalesInvoices(limit = 200): Promise<SalesInvoic
     "set_warehouse",
     "territory",
   ]);
+  // docstatus=1 → Submitted (approved) invoices only; exclude Cancelled.
+  const filters = JSON.stringify([
+    ["docstatus", "=", 1],
+    ["status", "!=", "Cancelled"],
+  ]);
   const params = new URLSearchParams({
     fields,
+    filters,
     order_by: "posting_date desc, name desc",
-    limit_page_length: String(limit),
+    limit_page_length: String(limit), // 0 = all
   });
   const data = await erpFetch(`/api/resource/Sales Invoice?${params.toString()}`);
   return (data?.data ?? []) as SalesInvoice[];
@@ -92,19 +98,23 @@ export type StockRow = {
   [k: string]: unknown;
 };
 
-export async function fetchStockBalance(): Promise<StockRow[]> {
+export async function fetchStockBalance(company = "FarmAlert"): Promise<StockRow[]> {
   const today = new Date().toISOString().slice(0, 10);
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const body = {
     report_name: "Stock Balance",
-    filters: { from_date: today, to_date: today, company: undefined },
+    filters: {
+      from_date: monthAgo,
+      to_date: today,
+      company,
+      valuation_field_type: "Currency",
+    },
   };
   const data = await erpFetch("/api/method/frappe.desk.query_report.run", {
     method: "POST",
     body: JSON.stringify(body),
   });
-  // Frappe returns { message: { columns, result } }
   const result = data?.message?.result ?? [];
-  // Some rows are totals/strings — keep only object rows with an item_code.
   return result.filter(
     (r: unknown): r is StockRow =>
       typeof r === "object" && r !== null && typeof (r as StockRow).item_code === "string",
