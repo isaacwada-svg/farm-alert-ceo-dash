@@ -109,6 +109,8 @@ function summarise(invoices: SalesInvoice[], stock: StockRow[]): ErpOverview {
     fetchedAt: new Date().toISOString(),
     totalSalesToday,
     invoiceCountToday: todayInvoices.length,
+    totalRevenueAllTime,
+    totalInvoicesAllTime: invoices.length,
     outstandingTotal,
     newCustomersThisWeek,
     returningCustomers,
