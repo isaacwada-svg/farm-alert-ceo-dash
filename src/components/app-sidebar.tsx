@@ -6,6 +6,7 @@ import {
   Boxes,
   Users,
   Siren,
+  Calculator,
   Settings as SettingsIcon,
 } from "lucide-react";
 import logoAsset from "@/assets/farm-alert-logo.jpg.asset.json";
@@ -29,6 +30,7 @@ const items = [
   { title: "Sales", url: "/sales", icon: TrendingUp },
   { title: "Inventory", url: "/inventory", icon: Boxes },
   { title: "Customers", url: "/customers", icon: Users },
+  { title: "Accounting", url: "/accounting", icon: Calculator },
   { title: "Red Alerts", url: "/alerts", icon: Siren },
   { title: "Settings", url: "/settings", icon: SettingsIcon },
 ] as const;

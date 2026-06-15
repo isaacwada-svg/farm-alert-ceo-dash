@@ -41,12 +41,15 @@ export function PartnerSalesChart({ data }: { data?: { region: string; sales: nu
   );
 }
 
-export function CustomerActivityChart() {
+export function CustomerActivityChart({ data }: { data?: { week?: string; day?: string; new: number; returning: number }[] }) {
+  const rows = data && data.length > 0
+    ? data.map((r) => ({ label: r.week ?? r.day ?? "", new: r.new, returning: r.returning }))
+    : customerActivity.map((r) => ({ label: r.day, new: r.new, returning: r.returning }));
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={customerActivity} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+      <BarChart data={rows} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
         <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
         <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--muted)" }} />
         <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" />

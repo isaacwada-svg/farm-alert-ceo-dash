@@ -1,108 +1,517 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { fetchRecentSalesInvoices, fetchStockBalance, type SalesInvoice, type StockRow } from "./erp.server";
+import {
+  fetchRecentSalesInvoices,
+  fetchSalesInvoiceItems,
+  fetchStockBalance,
+  fetchCustomers,
+  fetchPaymentEntries,
+  type SalesInvoice,
+  type InvoiceItem,
+  type StockRow,
+  type CustomerRow,
+  type PaymentEntry,
+} from "./erp.server";
 
-// Map ERP warehouse names to dashboard region/center labels.
-// Adjust the substrings on the right to match the user's actual warehouse naming.
-const WAREHOUSE_REGION_MAP: { match: RegExp; region: string }[] = [
-  { match: /lagos/i, region: "Lagos" },
-  { match: /abuja/i, region: "Abuja" },
-  { match: /kano/i, region: "Kano" },
-  { match: /ibadan/i, region: "Ibadan" },
-  { match: /adamawa/i, region: "Adamawa" },
-  { match: /port\s*harcourt|phc|harcourt/i, region: "Port Harcourt" },
-  { match: /taraba/i, region: "Taraba" },
-  { match: /liberia|monrovia/i, region: "Liberia" },
-  { match: /ghana|accra/i, region: "Ghana" },
-  { match: /cameroon|douala/i, region: "Cameroon" },
-  { match: /sierra|freetown/i, region: "Sierra Leone" },
-  { match: /niger|niamey/i, region: "Niger" },
+// === Canonical 8 distribution centers ============================
+export const CENTERS = [
+  "Abuja",
+  "Lagos",
+  "Ibadan",
+  "Kano",
+  "Port Harcourt",
+  "Taraba",
+  "Adamawa",
+  "Liberia",
+] as const;
+export type Center = (typeof CENTERS)[number];
+
+const CENTER_MATCHERS: { match: RegExp; center: Center }[] = [
+  { match: /lagos/i, center: "Lagos" },
+  { match: /abuja|fct/i, center: "Abuja" },
+  { match: /kano/i, center: "Kano" },
+  { match: /ibadan|oyo/i, center: "Ibadan" },
+  { match: /adamawa|yola/i, center: "Adamawa" },
+  { match: /port\s*harcourt|phc|harcourt|rivers/i, center: "Port Harcourt" },
+  { match: /taraba|jalingo/i, center: "Taraba" },
+  { match: /liberia|monrovia/i, center: "Liberia" },
 ];
 
-function regionFor(warehouse?: string | null, territory?: string | null): string {
+function centerFor(warehouse?: string | null, territory?: string | null): Center | null {
   const hay = `${warehouse ?? ""} ${territory ?? ""}`;
-  for (const entry of WAREHOUSE_REGION_MAP) {
-    if (entry.match.test(hay)) return entry.region;
-  }
-  return warehouse?.split("-")[0]?.trim() || territory || "Other";
+  for (const m of CENTER_MATCHERS) if (m.match.test(hay)) return m.center;
+  return null;
 }
 
-export type ErpOverview = {
+// Approximate Nigerian state coordinates for map plotting.
+const STATE_COORDS: Record<string, { lat: number; lng: number }> = {
+  Lagos: { lat: 6.5244, lng: 3.3792 },
+  Abuja: { lat: 9.0765, lng: 7.3986 },
+  Kano: { lat: 12.0022, lng: 8.5919 },
+  Ibadan: { lat: 7.3775, lng: 3.947 },
+  Oyo: { lat: 7.85, lng: 3.93 },
+  Adamawa: { lat: 9.3265, lng: 12.3984 },
+  "Port Harcourt": { lat: 4.8156, lng: 7.0498 },
+  Rivers: { lat: 4.8472, lng: 6.9745 },
+  Taraba: { lat: 8.8937, lng: 11.3604 },
+  Liberia: { lat: 6.3004, lng: -10.7969 },
+  Kaduna: { lat: 10.5222, lng: 7.4383 },
+  Plateau: { lat: 9.8965, lng: 8.8583 },
+  Enugu: { lat: 6.5244, lng: 7.5186 },
+  Delta: { lat: 5.8903, lng: 5.6804 },
+  Anambra: { lat: 6.2209, lng: 6.937 },
+  Edo: { lat: 6.34, lng: 5.62 },
+  Borno: { lat: 11.8311, lng: 13.151 },
+  Bauchi: { lat: 10.3158, lng: 9.8442 },
+  Sokoto: { lat: 13.0059, lng: 5.2476 },
+  Benue: { lat: 7.7322, lng: 8.5391 },
+};
+
+function coordsFor(label: string): { lat: number; lng: number } | null {
+  if (STATE_COORDS[label]) return STATE_COORDS[label];
+  for (const k of Object.keys(STATE_COORDS)) {
+    if (label.toLowerCase().includes(k.toLowerCase())) return STATE_COORDS[k];
+  }
+  return null;
+}
+
+// === Public output type =========================================
+export type CenterInventory = {
+  center: Center;
+  out: { sku: string; product: string; qty: number }[];
+  low: { sku: string; product: string; qty: number }[];
+  ok: { sku: string; product: string; qty: number }[];
+};
+
+export type CenterSales = {
+  center: Center;
+  mtd: number;
+  lastMonth: number;
+  deltaPct: number;
+  sixMonthHigh: number;
+  sixMonthHighMonth: string;
+  recommendation: string;
+};
+
+export type ProductForecast = {
+  item: string;
+  itemCode: string;
+  last30dQty: number;
+  last30dRevenue: number;
+  projected90dQty: number;
+  projected90dRevenue: number;
+};
+
+export type TopCustomer = {
+  customer: string;
+  name: string;
+  totalSpent: number;
+  lastMonthSpent: number;
+  orderCount: number;
+  region: string;
+  lastOrder: string;
+};
+
+export type CenterReceivable = { center: Center; outstanding: number; advances: number };
+
+export type RegionMapPoint = {
+  region: string;
+  lat: number;
+  lng: number;
+  sales: number;
+  customers: number;
+  newPartners: number;
+};
+
+export type ErpOverviewOK = {
   ok: true;
   fetchedAt: string;
+  // Headlines
   totalSalesToday: number;
   invoiceCountToday: number;
   totalRevenueAllTime: number;
   totalInvoicesAllTime: number;
   outstandingTotal: number;
+  advancesTotal: number;
+  mtdRevenue: number;
+  lastMonthRevenue: number;
+  monthGoalNaira: number; // 250M / 3 -> per month target
+  // Customers
   newCustomersThisWeek: number;
+  newCustomers30d: number;
   returningCustomers: number;
-  partnerSalesByRegion: { region: string; sales: number }[]; // in millions ₦
-  inventory: {
-    sku: string;
-    product: string;
-    center: string;
-    qty: number;
-    status: "out" | "low" | "ok";
-  }[];
+  customerActivityWeekly: { week: string; new: number; returning: number }[];
+  top10Customers: TopCustomer[];
+  // Sales
+  partnerSalesByRegion: { region: string; sales: number }[]; // ₦M MTD
+  centerSales: CenterSales[];
+  // Inventory
+  inventoryTop10ByCenter: CenterInventory[]; // top 10 lines / center for overview
+  inventoryFullByCenter: CenterInventory[]; // full breakdown for inventory page
   outOfStockByCenter: { center: string; count: number }[];
-} | { ok: false; error: string };
+  // Forecast
+  productForecast: ProductForecast[];
+  centerForecast: { center: Center; projected90dRevenue: number }[];
+  // Receivables
+  receivablesByCenter: CenterReceivable[];
+  // Map
+  regionMapPoints: RegionMapPoint[];
+  // Alerts
+  redAlertsByCenter: { center: Center; alerts: { title: string; severity: "critical" | "warning" }[] }[];
+  // AI summary inputs
+  aiSummary: string;
+};
 
-function summarise(invoices: SalesInvoice[], stock: StockRow[]): ErpOverview {
-  const today = new Date().toISOString().slice(0, 10);
+export type ErpOverview = ErpOverviewOK | { ok: false; error: string };
+
+// ================= Summarisation ==================================
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+}
+function startOfPrevMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth() - 1, 1).toISOString().slice(0, 10);
+}
+
+function summarise(
+  invoices: SalesInvoice[],
+  items: InvoiceItem[],
+  stock: StockRow[],
+  customers: CustomerRow[],
+  payments: PaymentEntry[],
+): ErpOverviewOK {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const monthStart = startOfMonth(now);
+  const prevMonthStart = startOfPrevMonth(now);
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
 
+  // ---------- Headlines ----------
   const todayInvoices = invoices.filter((i) => i.posting_date >= today);
   const totalSalesToday = todayInvoices.reduce((s, i) => s + (i.grand_total ?? 0), 0);
   const totalRevenueAllTime = invoices.reduce((s, i) => s + (i.grand_total ?? 0), 0);
   const outstandingTotal = invoices.reduce((s, i) => s + (i.outstanding_amount ?? 0), 0);
+  const advancesTotal = payments.reduce((s, p) => s + (p.unallocated_amount ?? 0), 0);
+  const mtdRevenue = invoices
+    .filter((i) => i.posting_date >= monthStart)
+    .reduce((s, i) => s + (i.grand_total ?? 0), 0);
+  const lastMonthRevenue = invoices
+    .filter((i) => i.posting_date >= prevMonthStart && i.posting_date < monthStart)
+    .reduce((s, i) => s + (i.grand_total ?? 0), 0);
 
-  // Customer first-seen detection from invoice history we have.
+  // ---------- Customers ----------
   const firstSeen = new Map<string, string>();
+  const lastSeen = new Map<string, string>();
+  const customerTotal = new Map<string, number>();
+  const customerLastMonth = new Map<string, number>();
+  const customerOrders = new Map<string, number>();
+  const customerName = new Map<string, string>();
+  const customerRegion = new Map<string, string>();
+
   for (const inv of invoices) {
-    const prev = firstSeen.get(inv.customer);
-    if (!prev || inv.posting_date < prev) firstSeen.set(inv.customer, inv.posting_date);
+    const cust = inv.customer;
+    const prev = firstSeen.get(cust);
+    if (!prev || inv.posting_date < prev) firstSeen.set(cust, inv.posting_date);
+    const lst = lastSeen.get(cust);
+    if (!lst || inv.posting_date > lst) lastSeen.set(cust, inv.posting_date);
+    customerTotal.set(cust, (customerTotal.get(cust) ?? 0) + (inv.grand_total ?? 0));
+    if (inv.posting_date >= prevMonthStart && inv.posting_date < monthStart) {
+      customerLastMonth.set(cust, (customerLastMonth.get(cust) ?? 0) + (inv.grand_total ?? 0));
+    }
+    customerOrders.set(cust, (customerOrders.get(cust) ?? 0) + 1);
+    if (!customerName.has(cust)) customerName.set(cust, inv.customer_name ?? cust);
+    if (!customerRegion.has(cust)) {
+      const c = centerFor(inv.set_warehouse, inv.territory);
+      customerRegion.set(cust, c ?? inv.territory ?? "Other");
+    }
   }
+  // also pull from Customer doctype for first seen if more accurate
+  for (const c of customers) {
+    if (c.creation) {
+      const cdate = c.creation.slice(0, 10);
+      const prev = firstSeen.get(c.name);
+      if (!prev || cdate < prev) firstSeen.set(c.name, cdate);
+    }
+    if (c.customer_name && !customerName.has(c.name)) customerName.set(c.name, c.customer_name);
+  }
+
   let newCustomersThisWeek = 0;
-  for (const [, date] of firstSeen) if (date >= sevenDaysAgo) newCustomersThisWeek++;
-  const returningCustomers = firstSeen.size - newCustomersThisWeek;
-
-  // Partner sales by region (this month).
-  const monthStart = today.slice(0, 7) + "-01";
-  const byRegion = new Map<string, number>();
-  for (const inv of invoices) {
-    if (inv.posting_date < monthStart) continue;
-    const region = regionFor(inv.set_warehouse, inv.territory);
-    byRegion.set(region, (byRegion.get(region) ?? 0) + (inv.grand_total ?? 0));
+  let newCustomers30d = 0;
+  for (const [, date] of firstSeen) {
+    if (date >= sevenDaysAgo) newCustomersThisWeek++;
+    if (date >= thirtyDaysAgo) newCustomers30d++;
   }
-  const partnerSalesByRegion = [...byRegion.entries()]
-    .map(([region, sales]) => ({ region, sales: +(sales / 1_000_000).toFixed(2) }))
-    .sort((a, b) => b.sales - a.sales)
-    .slice(0, 8);
+  const returningCustomers = firstSeen.size - newCustomers30d;
 
-  // Inventory rows + out-of-stock counts.
-  const inventory = stock.slice(0, 20).map((r) => {
-    const qty = Number(r.bal_qty ?? 0);
-    const status: "out" | "low" | "ok" = qty <= 0 ? "out" : qty < 10 ? "low" : "ok";
+  // Weekly activity for last 8 weeks
+  const weekBuckets = new Map<string, { new: number; returning: number }>();
+  for (let w = 7; w >= 0; w--) {
+    const d = new Date(Date.now() - w * 7 * 86400000);
+    const key = `W${8 - w}`;
+    weekBuckets.set(key, { new: 0, returning: 0 });
+    void d;
+  }
+  const weekKeys = [...weekBuckets.keys()];
+  for (const [cust, date] of firstSeen) {
+    const daysAgo = Math.floor((Date.now() - new Date(date).getTime()) / 86400000);
+    if (daysAgo < 0 || daysAgo > 56) continue;
+    const idx = 7 - Math.floor(daysAgo / 7);
+    if (idx >= 0 && idx < 8) {
+      const k = weekKeys[idx];
+      const bucket = weekBuckets.get(k)!;
+      bucket.new++;
+    }
+    void cust;
+  }
+  for (const inv of invoices) {
+    const daysAgo = Math.floor((Date.now() - new Date(inv.posting_date).getTime()) / 86400000);
+    if (daysAgo < 0 || daysAgo > 56) continue;
+    const idx = 7 - Math.floor(daysAgo / 7);
+    if (idx < 0 || idx >= 8) continue;
+    const k = weekKeys[idx];
+    const bucket = weekBuckets.get(k)!;
+    const fs = firstSeen.get(inv.customer);
+    if (fs && fs < inv.posting_date) bucket.returning++;
+  }
+  const customerActivityWeekly = [...weekBuckets.entries()].map(([week, v]) => ({ week, ...v }));
+
+  const top10Customers: TopCustomer[] = [...customerTotal.entries()]
+    .map(([cust, total]) => ({
+      customer: cust,
+      name: customerName.get(cust) ?? cust,
+      totalSpent: total,
+      lastMonthSpent: customerLastMonth.get(cust) ?? 0,
+      orderCount: customerOrders.get(cust) ?? 0,
+      region: customerRegion.get(cust) ?? "Other",
+      lastOrder: lastSeen.get(cust) ?? "",
+    }))
+    .sort((a, b) => b.totalSpent - a.totalSpent)
+    .slice(0, 10);
+
+  // ---------- Partner sales MTD by center ----------
+  const mtdByCenter = new Map<Center, number>();
+  const lastMonthByCenter = new Map<Center, number>();
+  // For 6-month high
+  const monthByCenter = new Map<string, Map<Center, number>>();
+  for (const inv of invoices) {
+    const c = centerFor(inv.set_warehouse, inv.territory);
+    if (!c) continue;
+    if (inv.posting_date >= monthStart) {
+      mtdByCenter.set(c, (mtdByCenter.get(c) ?? 0) + (inv.grand_total ?? 0));
+    }
+    if (inv.posting_date >= prevMonthStart && inv.posting_date < monthStart) {
+      lastMonthByCenter.set(c, (lastMonthByCenter.get(c) ?? 0) + (inv.grand_total ?? 0));
+    }
+    const monthKey = inv.posting_date.slice(0, 7);
+    if (!monthByCenter.has(monthKey)) monthByCenter.set(monthKey, new Map());
+    const m = monthByCenter.get(monthKey)!;
+    m.set(c, (m.get(c) ?? 0) + (inv.grand_total ?? 0));
+  }
+
+  const partnerSalesByRegion = CENTERS.map((center) => ({
+    region: center,
+    sales: +(((mtdByCenter.get(center) ?? 0) / 1_000_000).toFixed(2)),
+  })).sort((a, b) => b.sales - a.sales);
+
+  const centerSales: CenterSales[] = CENTERS.map((center) => {
+    const mtd = mtdByCenter.get(center) ?? 0;
+    const lm = lastMonthByCenter.get(center) ?? 0;
+    let high = 0;
+    let highMonth = "";
+    for (const [monthKey, perC] of monthByCenter) {
+      const v = perC.get(center) ?? 0;
+      if (v > high) {
+        high = v;
+        highMonth = monthKey;
+      }
+    }
+    const deltaPct = lm > 0 ? +(((mtd - lm) / lm) * 100).toFixed(1) : mtd > 0 ? 100 : 0;
+    let rec = "Maintain current performance and watch stock cover.";
+    if (mtd < lm * 0.8) rec = `Sales dropped ${Math.abs(deltaPct)}% vs last month — reinforce field reps and run a 7-day promo.`;
+    else if (mtd > lm * 1.1) rec = `Strong growth (+${deltaPct}%) — secure additional stock cover and onboard 2-3 new partners.`;
+    else if (mtd < high * 0.6) rec = `Currently at ${Math.round((mtd / Math.max(high, 1)) * 100)}% of 6-month high — push targeted campaign.`;
     return {
-      sku: String(r.item_code),
-      product: String(r.item_name ?? r.item_code),
-      center: regionFor(typeof r.warehouse === "string" ? r.warehouse : null),
-      qty,
-      status,
+      center,
+      mtd,
+      lastMonth: lm,
+      deltaPct,
+      sixMonthHigh: high,
+      sixMonthHighMonth: highMonth,
+      recommendation: rec,
     };
   });
 
-  const oosMap = new Map<string, number>();
+  // ---------- Inventory grouped by center ----------
+  const stockByCenter = new Map<Center, StockRow[]>();
   for (const r of stock) {
-    const qty = Number(r.bal_qty ?? 0);
-    if (qty > 0) continue;
-    const center = regionFor(typeof r.warehouse === "string" ? r.warehouse : null);
-    oosMap.set(center, (oosMap.get(center) ?? 0) + 1);
+    const c = centerFor(typeof r.warehouse === "string" ? r.warehouse : null);
+    if (!c) continue;
+    if (!stockByCenter.has(c)) stockByCenter.set(c, []);
+    stockByCenter.get(c)!.push(r);
   }
-  const outOfStockByCenter = [...oosMap.entries()]
-    .map(([center, count]) => ({ center, count }))
-    .sort((a, b) => b.count - a.count);
+
+  function buildCenterInventory(rows: StockRow[]): { out: any[]; low: any[]; ok: any[] } {
+    const out: any[] = [];
+    const low: any[] = [];
+    const ok: any[] = [];
+    for (const r of rows) {
+      const qty = Number(r.bal_qty ?? 0);
+      const item = {
+        sku: String(r.item_code),
+        product: String(r.item_name ?? r.item_code),
+        qty,
+      };
+      if (qty <= 0) out.push(item);
+      else if (qty < 10) low.push(item);
+      else ok.push(item);
+    }
+    return { out, low, ok };
+  }
+
+  const inventoryFullByCenter: CenterInventory[] = CENTERS.map((center) => {
+    const rows = stockByCenter.get(center) ?? [];
+    const { out, low, ok } = buildCenterInventory(rows);
+    return { center, out, low, ok };
+  });
+
+  // Top-10 view per center for overview (out → low → ok, trimmed)
+  const inventoryTop10ByCenter: CenterInventory[] = inventoryFullByCenter.map((ci) => {
+    const combined = [...ci.out, ...ci.low, ...ci.ok].slice(0, 10);
+    const out = combined.filter((i) => i.qty <= 0);
+    const low = combined.filter((i) => i.qty > 0 && i.qty < 10);
+    const ok = combined.filter((i) => i.qty >= 10);
+    return { center: ci.center, out, low, ok };
+  });
+
+  const outOfStockByCenter = CENTERS.map((center) => {
+    const rows = stockByCenter.get(center) ?? [];
+    const count = rows.filter((r) => Number(r.bal_qty ?? 0) <= 0).length;
+    return { center, count };
+  });
+
+  // ---------- Product forecast (90d) ----------
+  const invoiceDate = new Map(invoices.map((i) => [i.name, i.posting_date]));
+  const itemAgg = new Map<string, { name: string; qty: number; revenue: number }>();
+  for (const it of items) {
+    const date = invoiceDate.get(it.parent);
+    if (!date || date < thirtyDaysAgo) continue;
+    const cur = itemAgg.get(it.item_code) ?? { name: it.item_name ?? it.item_code, qty: 0, revenue: 0 };
+    cur.qty += Number(it.qty ?? 0);
+    cur.revenue += Number(it.amount ?? 0);
+    itemAgg.set(it.item_code, cur);
+  }
+  const productForecast: ProductForecast[] = [...itemAgg.entries()]
+    .map(([code, v]) => ({
+      itemCode: code,
+      item: v.name,
+      last30dQty: +v.qty.toFixed(2),
+      last30dRevenue: +v.revenue.toFixed(0),
+      projected90dQty: +(v.qty * 3).toFixed(2),
+      projected90dRevenue: +(v.revenue * 3).toFixed(0),
+    }))
+    .sort((a, b) => b.projected90dRevenue - a.projected90dRevenue)
+    .slice(0, 20);
+
+  // Per-center 90-day projection (× 3 of last 30 days at center)
+  const centerLast30Revenue = new Map<Center, number>();
+  for (const inv of invoices) {
+    if (inv.posting_date < thirtyDaysAgo) continue;
+    const c = centerFor(inv.set_warehouse, inv.territory);
+    if (!c) continue;
+    centerLast30Revenue.set(c, (centerLast30Revenue.get(c) ?? 0) + (inv.grand_total ?? 0));
+  }
+  const centerForecast = CENTERS.map((center) => ({
+    center,
+    projected90dRevenue: (centerLast30Revenue.get(center) ?? 0) * 3,
+  }));
+
+  // ---------- Receivables / advances by center ----------
+  const recByCenter = new Map<Center, number>();
+  for (const inv of invoices) {
+    const c = centerFor(inv.set_warehouse, inv.territory);
+    if (!c) continue;
+    recByCenter.set(c, (recByCenter.get(c) ?? 0) + (inv.outstanding_amount ?? 0));
+  }
+  // Advances: use payments unallocated_amount, attribute to customer's most-frequent center
+  const custCenter = new Map<string, Center | null>();
+  for (const inv of invoices) {
+    if (custCenter.has(inv.customer)) continue;
+    custCenter.set(inv.customer, centerFor(inv.set_warehouse, inv.territory));
+  }
+  const advByCenter = new Map<Center, number>();
+  for (const p of payments) {
+    const c = custCenter.get(p.party) ?? null;
+    if (!c) continue;
+    advByCenter.set(c, (advByCenter.get(c) ?? 0) + (p.unallocated_amount ?? 0));
+  }
+  const receivablesByCenter: CenterReceivable[] = CENTERS.map((center) => ({
+    center,
+    outstanding: recByCenter.get(center) ?? 0,
+    advances: advByCenter.get(center) ?? 0,
+  }));
+
+  // ---------- Map: highest selling regions + new partners ----------
+  const regionAgg = new Map<string, { sales: number; customers: Set<string>; newPartners: number }>();
+  for (const inv of invoices) {
+    if (inv.posting_date < monthStart) continue;
+    const c = centerFor(inv.set_warehouse, inv.territory);
+    const label = c ?? (inv.territory || "Other");
+    if (!regionAgg.has(label)) regionAgg.set(label, { sales: 0, customers: new Set(), newPartners: 0 });
+    const e = regionAgg.get(label)!;
+    e.sales += inv.grand_total ?? 0;
+    e.customers.add(inv.customer);
+  }
+  for (const [cust, fdate] of firstSeen) {
+    if (fdate < thirtyDaysAgo) continue;
+    const region = customerRegion.get(cust) ?? "Other";
+    if (!regionAgg.has(region)) regionAgg.set(region, { sales: 0, customers: new Set(), newPartners: 0 });
+    regionAgg.get(region)!.newPartners++;
+  }
+  const regionMapPoints: RegionMapPoint[] = [...regionAgg.entries()]
+    .map(([region, v]) => {
+      const co = coordsFor(region);
+      return co
+        ? { region, lat: co.lat, lng: co.lng, sales: v.sales, customers: v.customers.size, newPartners: v.newPartners }
+        : null;
+    })
+    .filter((x): x is RegionMapPoint => x !== null);
+
+  // ---------- Red alerts derived from inventory ----------
+  const redAlertsByCenter = CENTERS.map((center) => {
+    const inv = inventoryFullByCenter.find((i) => i.center === center)!;
+    const alerts: { title: string; severity: "critical" | "warning" }[] = [];
+    for (const o of inv.out.slice(0, 5)) {
+      alerts.push({ title: `${o.product} (${o.sku}) — OUT OF STOCK`, severity: "critical" });
+    }
+    for (const l of inv.low.slice(0, 5)) {
+      alerts.push({ title: `${l.product} (${l.sku}) — low (${l.qty} left)`, severity: "warning" });
+    }
+    const sales = centerSales.find((s) => s.center === center)!;
+    if (sales.deltaPct < -25) {
+      alerts.push({ title: `Sales down ${Math.abs(sales.deltaPct)}% vs last month`, severity: "critical" });
+    }
+    return { center, alerts };
+  });
+
+  // ---------- AI executive summary ----------
+  const monthGoalNaira = 250_000_000 / 3; // ~₦83.3M / month for June-Aug target
+  const goalPct = monthGoalNaira > 0 ? (mtdRevenue / monthGoalNaira) * 100 : 0;
+  const mtdVsLm =
+    lastMonthRevenue > 0
+      ? (((mtdRevenue - lastMonthRevenue) / lastMonthRevenue) * 100).toFixed(1)
+      : "—";
+  const topCenter = [...centerSales].sort((a, b) => b.mtd - a.mtd)[0];
+  const weakCenter = [...centerSales].sort((a, b) => a.mtd - b.mtd)[0];
+  const outCount = inventoryFullByCenter.reduce((s, c) => s + c.out.length, 0);
+  const aiSummary =
+    `Today: ₦${(totalSalesToday / 1_000_000).toFixed(2)}M from ${todayInvoices.length} approved invoices. ` +
+    `Month-to-date: ₦${(mtdRevenue / 1_000_000).toFixed(2)}M vs last month ₦${(lastMonthRevenue / 1_000_000).toFixed(2)}M (${mtdVsLm}%). ` +
+    `Against the 3-month ₦250M target you are at ${goalPct.toFixed(1)}% of this month's ₦${(monthGoalNaira / 1_000_000).toFixed(1)}M share. ` +
+    `Top performer: ${topCenter?.center} (₦${(topCenter?.mtd / 1_000_000).toFixed(2)}M). ` +
+    `Weakest: ${weakCenter?.center} (₦${(weakCenter?.mtd / 1_000_000).toFixed(2)}M). ` +
+    `${outCount} SKUs are at zero stock across the network. ` +
+    `Recommendation: rebalance stock from Lagos/Abuja DCs to ${weakCenter?.center}, push a closed-loop promo to the top 10 customers to lift repeat orders, ` +
+    `and have field reps activate ${newCustomersThisWeek} fresh partner leads this week. Hitting ₦250M by August requires +${Math.max(0, ((monthGoalNaira - mtdRevenue) / 1_000_000)).toFixed(1)}M more this month.`;
 
   return {
     ok: true,
@@ -112,21 +521,39 @@ function summarise(invoices: SalesInvoice[], stock: StockRow[]): ErpOverview {
     totalRevenueAllTime,
     totalInvoicesAllTime: invoices.length,
     outstandingTotal,
+    advancesTotal,
+    mtdRevenue,
+    lastMonthRevenue,
+    monthGoalNaira,
     newCustomersThisWeek,
+    newCustomers30d,
     returningCustomers,
+    customerActivityWeekly,
+    top10Customers,
     partnerSalesByRegion,
-    inventory,
+    centerSales,
+    inventoryTop10ByCenter,
+    inventoryFullByCenter,
     outOfStockByCenter,
+    productForecast,
+    centerForecast,
+    receivablesByCenter,
+    regionMapPoints,
+    redAlertsByCenter,
+    aiSummary,
   };
 }
 
 export const getErpOverview = createServerFn({ method: "GET" }).handler(async (): Promise<ErpOverview> => {
   try {
-    const [invoices, stock] = await Promise.all([
-      fetchRecentSalesInvoices(200),
+    const [invoices, items, stock, customers, payments] = await Promise.all([
+      fetchRecentSalesInvoices(0),
+      fetchSalesInvoiceItems(0).catch(() => [] as InvoiceItem[]),
       fetchStockBalance().catch(() => [] as StockRow[]),
+      fetchCustomers(0).catch(() => [] as CustomerRow[]),
+      fetchPaymentEntries(0).catch(() => [] as PaymentEntry[]),
     ]);
-    return summarise(invoices, stock);
+    return summarise(invoices, items, stock, customers, payments);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
