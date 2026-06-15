@@ -8,8 +8,6 @@ function getEnv() {
   if (!baseUrl || !key || !secret) {
     throw new Error("FARMALERT_ERP_* env vars are not configured");
   }
-  // Normalise: ensure scheme, strip trailing slashes, drop any desk/app path
-  // so we always hit /api/* from the site root.
   if (!/^https?:\/\//i.test(baseUrl)) baseUrl = `https://${baseUrl}`;
   try {
     const u = new URL(baseUrl);
@@ -54,6 +52,7 @@ async function erpFetch(path: string, init: RequestInit = {}) {
 export type SalesInvoice = {
   name: string;
   customer: string;
+  customer_name?: string;
   posting_date: string;
   grand_total: number;
   status: string;
@@ -65,17 +64,9 @@ export type SalesInvoice = {
 
 export async function fetchRecentSalesInvoices(limit = 0): Promise<SalesInvoice[]> {
   const fields = JSON.stringify([
-    "name",
-    "customer",
-    "posting_date",
-    "grand_total",
-    "status",
-    "outstanding_amount",
-    "title",
-    "set_warehouse",
-    "territory",
+    "name", "customer", "customer_name", "posting_date", "grand_total",
+    "status", "outstanding_amount", "title", "set_warehouse", "territory",
   ]);
-  // docstatus=1 → Submitted (approved) invoices only; exclude Cancelled.
   const filters = JSON.stringify([
     ["docstatus", "=", 1],
     ["status", "!=", "Cancelled"],
@@ -84,10 +75,35 @@ export async function fetchRecentSalesInvoices(limit = 0): Promise<SalesInvoice[
     fields,
     filters,
     order_by: "posting_date desc, name desc",
-    limit_page_length: String(limit), // 0 = all
+    limit_page_length: String(limit),
   });
   const data = await erpFetch(`/api/resource/Sales Invoice?${params.toString()}`);
   return (data?.data ?? []) as SalesInvoice[];
+}
+
+export type InvoiceItem = {
+  parent: string;
+  item_code: string;
+  item_name?: string;
+  qty: number;
+  amount: number;
+  warehouse?: string | null;
+};
+
+export async function fetchSalesInvoiceItems(limit = 0): Promise<InvoiceItem[]> {
+  const fields = JSON.stringify(["parent", "item_code", "item_name", "qty", "amount", "warehouse"]);
+  const filters = JSON.stringify([
+    ["docstatus", "=", 1],
+    ["parenttype", "=", "Sales Invoice"],
+  ]);
+  const params = new URLSearchParams({
+    fields,
+    filters,
+    limit_page_length: String(limit),
+    order_by: "creation desc",
+  });
+  const data = await erpFetch(`/api/resource/Sales Invoice Item?${params.toString()}`);
+  return (data?.data ?? []) as InvoiceItem[];
 }
 
 export type StockRow = {
@@ -119,4 +135,53 @@ export async function fetchStockBalance(company = "FarmAlert"): Promise<StockRow
     (r: unknown): r is StockRow =>
       typeof r === "object" && r !== null && typeof (r as StockRow).item_code === "string",
   );
+}
+
+export type CustomerRow = {
+  name: string;
+  customer_name?: string;
+  territory?: string;
+  creation?: string;
+  customer_primary_address?: string | null;
+};
+
+export async function fetchCustomers(limit = 0): Promise<CustomerRow[]> {
+  const fields = JSON.stringify(["name", "customer_name", "territory", "creation", "customer_primary_address"]);
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: String(limit),
+    order_by: "creation desc",
+  });
+  const data = await erpFetch(`/api/resource/Customer?${params.toString()}`);
+  return (data?.data ?? []) as CustomerRow[];
+}
+
+export type PaymentEntry = {
+  name: string;
+  party: string;
+  party_type: string;
+  payment_type: string;
+  paid_amount: number;
+  unallocated_amount: number;
+  posting_date: string;
+};
+
+export async function fetchPaymentEntries(limit = 0): Promise<PaymentEntry[]> {
+  const fields = JSON.stringify([
+    "name", "party", "party_type", "payment_type",
+    "paid_amount", "unallocated_amount", "posting_date",
+  ]);
+  const filters = JSON.stringify([
+    ["docstatus", "=", 1],
+    ["payment_type", "=", "Receive"],
+    ["party_type", "=", "Customer"],
+  ]);
+  const params = new URLSearchParams({
+    fields,
+    filters,
+    limit_page_length: String(limit),
+    order_by: "posting_date desc",
+  });
+  const data = await erpFetch(`/api/resource/Payment Entry?${params.toString()}`);
+  return (data?.data ?? []) as PaymentEntry[];
 }
