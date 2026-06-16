@@ -680,10 +680,15 @@ export const getErpOverview = createServerFn({ method: "GET" }).handler(async ()
       fetchCustomers(0).catch(() => [] as CustomerRow[]),
       fetchPaymentEntries(0).catch(() => [] as PaymentEntry[]),
     ]);
-    const addresses = await fetchCustomerAddresses(
-      customers.map((c) => c.customer_primary_address).filter((name): name is string => Boolean(name)),
-    ).catch(() => [] as AddressRow[]);
-    return summarise(invoices, items, stock, customers, addresses, payments);
+    const addressLinks = await fetchCustomerAddressLinks(customers.map((c) => c.name)).catch(
+      () => [] as AddressLinkRow[],
+    );
+    const addressNames = [
+      ...customers.map((c) => c.customer_primary_address).filter((name): name is string => Boolean(name)),
+      ...addressLinks.map((link) => link.parent),
+    ];
+    const addresses = await fetchCustomerAddresses(addressNames).catch(() => [] as AddressRow[]);
+    return summarise(invoices, items, stock, customers, addressLinks, addresses, payments);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
