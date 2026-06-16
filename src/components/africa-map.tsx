@@ -1,5 +1,13 @@
-import { useEffect, useState, useMemo } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, LayersControl, LayerGroup } from "react-leaflet";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CircleMarker,
+  LayerGroup,
+  LayersControl,
+  MapContainer,
+  Popup,
+  TileLayer,
+  Tooltip,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { RegionMapPoint } from "@/lib/erp.functions";
@@ -9,41 +17,66 @@ interface Props {
   points?: RegionMapPoint[];
 }
 
-// Color ramp by sales bucket
 function colorForSales(sales: number, max: number): string {
-  if (max <= 0) return "#94a3b8";
-  const r = sales / max;
-  if (r > 0.66) return "#ef4444"; // hot
-  if (r > 0.33) return "#f59e0b"; // warm
-  if (r > 0) return "#2fcb6e"; // active
-  return "#94a3b8";
+  if (max <= 0 || sales <= 0) return "#64748b";
+  const ratio = sales / max;
+  if (ratio > 0.66) return "#dc2626";
+  if (ratio > 0.33) return "#f59e0b";
+  return "#16a34a";
+}
+
+function formatMoney(value: number) {
+  if (value >= 1_000_000) return `₦${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `₦${(value / 1_000).toFixed(0)}K`;
+  return `₦${value.toLocaleString()}`;
 }
 
 export function AfricaMap({ variant = "compact", points = [] }: Props) {
   const [mounted, setMounted] = useState(false);
+
   useEffect(() => setMounted(true), []);
 
   const height = variant === "full" ? 620 : 460;
-  const maxSales = useMemo(() => points.reduce((m, p) => Math.max(m, p.sales), 0), [points]);
+  const centerPoints = useMemo(
+    () => points.filter((point) => (point.type ?? "center") === "center"),
+    [points],
+  );
+  const customerPoints = useMemo(
+    () => points.filter((point) => point.type === "customer"),
+    [points],
+  );
+  const newCustomerPoints = useMemo(
+    () => customerPoints.filter((point) => point.newPartners > 0),
+    [customerPoints],
+  );
+  const maxSales = useMemo(
+    () => centerPoints.reduce((max, point) => Math.max(max, point.sales), 0),
+    [centerPoints],
+  );
 
   if (!mounted) {
-    return <div className="w-full rounded-lg border border-border bg-muted/30" style={{ height }} />;
+    return (
+      <div className="w-full rounded-lg border border-border bg-muted/30" style={{ height }} />
+    );
   }
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border border-border" style={{ height, background: "#f0f4f8" }}>
+    <div
+      className="relative w-full overflow-hidden rounded-lg border border-border"
+      style={{ height, background: "#eef3f7" }}
+    >
       <MapContainer
         center={[8.5, 8.5]}
-        zoom={4}
+        zoom={variant === "full" ? 5 : 4}
         minZoom={3}
-        maxZoom={12}
+        maxZoom={18}
         scrollWheelZoom
         style={{ height: "100%", width: "100%" }}
         worldCopyJump={false}
-        maxBounds={L.latLngBounds([-10, -25], [30, 30])}
+        maxBounds={L.latLngBounds([-12, -28], [32, 35])}
       >
         <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="Light">
+          <LayersControl.BaseLayer checked name="Street map">
             <TileLayer
               attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap'
               url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
@@ -56,29 +89,41 @@ export function AfricaMap({ variant = "compact", points = [] }: Props) {
             />
           </LayersControl.BaseLayer>
 
-          <LayersControl.Overlay checked name="Sales by region">
+          <LayersControl.Overlay checked name="Distribution center sales volume">
             <LayerGroup>
-              {points.map((p) => {
-                const color = colorForSales(p.sales, maxSales);
-                const radius = 8 + 14 * (maxSales > 0 ? p.sales / maxSales : 0);
+              {centerPoints.map((point) => {
+                const color = colorForSales(point.sales, maxSales);
+                const radius = 10 + 22 * (maxSales > 0 ? point.sales / maxSales : 0);
+
                 return (
                   <CircleMarker
-                    key={`s-${p.region}`}
-                    center={[p.lat, p.lng]}
+                    key={point.id ?? `center-${point.region}`}
+                    center={[point.lat, point.lng]}
                     radius={radius}
-                    pathOptions={{ color: "#ffffff", weight: 2, fillColor: color, fillOpacity: 0.85 }}
+                    pathOptions={{
+                      color: "#ffffff",
+                      weight: 2,
+                      fillColor: color,
+                      fillOpacity: 0.82,
+                    }}
                   >
                     <Tooltip direction="top">
-                      <strong>{p.region}</strong> · ₦{(p.sales / 1_000_000).toFixed(2)}M
+                      <strong>{point.region}</strong> · {formatMoney(point.sales)} MTD
                     </Tooltip>
                     <Popup>
-                      <div style={{ minWidth: 180 }}>
-                        <div style={{ fontWeight: 700, color: "#11455b" }}>{p.region}</div>
-                        <div style={{ fontSize: 12, marginTop: 4 }}>
-                          MTD sales: <strong>₦{(p.sales / 1_000_000).toFixed(2)}M</strong>
+                      <div style={{ minWidth: 210 }}>
+                        <div style={{ fontWeight: 700, color: "#11455b" }}>
+                          {point.region}
                         </div>
-                        <div style={{ fontSize: 12 }}>Customers: <strong>{p.customers}</strong></div>
-                        <div style={{ fontSize: 12 }}>New partners (30d): <strong>{p.newPartners}</strong></div>
+                        <div style={{ fontSize: 12, marginTop: 4 }}>
+                          Approved sales MTD: <strong>{formatMoney(point.sales)}</strong>
+                        </div>
+                        <div style={{ fontSize: 12 }}>
+                          Buying customers: <strong>{point.customers}</strong>
+                        </div>
+                        <div style={{ fontSize: 12 }}>
+                          New registered customers (30d): <strong>{point.newPartners}</strong>
+                        </div>
                       </div>
                     </Popup>
                   </CircleMarker>
@@ -87,17 +132,66 @@ export function AfricaMap({ variant = "compact", points = [] }: Props) {
             </LayerGroup>
           </LayersControl.Overlay>
 
-          <LayersControl.Overlay checked name="New partners (30d)">
+          <LayersControl.Overlay checked name="Customer registered / buying locations">
             <LayerGroup>
-              {points.filter((p) => p.newPartners > 0).map((p) => (
+              {customerPoints.map((point) => (
                 <CircleMarker
-                  key={`np-${p.region}`}
-                  center={[p.lat + 0.15, p.lng + 0.15]}
-                  radius={6}
-                  pathOptions={{ color: "#ffffff", weight: 1.5, fillColor: "#2fcb6e", fillOpacity: 1 }}
+                  key={point.id ?? `customer-${point.customer}-${point.lat}-${point.lng}`}
+                  center={[point.lat, point.lng]}
+                  radius={point.newPartners > 0 ? 6 : 4}
+                  pathOptions={{
+                    color: "#ffffff",
+                    weight: 1.3,
+                    fillColor: point.newPartners > 0 ? "#16a34a" : "#2563eb",
+                    fillOpacity: 0.95,
+                  }}
                 >
                   <Tooltip direction="top">
-                    <strong>+{p.newPartners} new</strong> · {p.region}
+                    <strong>{point.customerName ?? point.customer}</strong> · {point.center ?? point.region}
+                  </Tooltip>
+                  <Popup>
+                    <div style={{ minWidth: 230 }}>
+                      <div style={{ fontWeight: 700, color: "#11455b" }}>
+                        {point.customerName ?? point.customer}
+                      </div>
+                      <div style={{ fontSize: 12, marginTop: 4 }}>
+                        Center: <strong>{point.center ?? "—"}</strong>
+                      </div>
+                      <div style={{ fontSize: 12 }}>
+                        MTD purchases: <strong>{formatMoney(point.sales)}</strong>
+                      </div>
+                      <div style={{ fontSize: 12 }}>
+                        Registered: <strong>{point.registeredAt ?? "—"}</strong>
+                      </div>
+                      <div style={{ fontSize: 12 }}>
+                        Last purchase: <strong>{point.lastPurchase ?? "—"}</strong>
+                      </div>
+                      {point.address && (
+                        <div style={{ fontSize: 12, marginTop: 4 }}>{point.address}</div>
+                      )}
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              ))}
+            </LayerGroup>
+          </LayersControl.Overlay>
+
+          <LayersControl.Overlay checked name="New customers (30d)">
+            <LayerGroup>
+              {newCustomerPoints.map((point) => (
+                <CircleMarker
+                  key={`new-${point.id ?? point.customer}`}
+                  center={[point.lat, point.lng]}
+                  radius={9}
+                  pathOptions={{
+                    color: "#052e16",
+                    weight: 2,
+                    fillColor: "#22c55e",
+                    fillOpacity: 0.35,
+                  }}
+                >
+                  <Tooltip direction="top">
+                    <strong>New customer</strong> · {point.customerName ?? point.customer}
                   </Tooltip>
                 </CircleMarker>
               ))}
@@ -106,16 +200,31 @@ export function AfricaMap({ variant = "compact", points = [] }: Props) {
         </LayersControl>
       </MapContainer>
 
-      {/* Legend */}
       <div className="pointer-events-none absolute left-3 bottom-3 z-[400] flex flex-col gap-1.5 rounded-md bg-white/95 p-2 text-[11px] shadow-sm">
-        <div className="font-semibold text-foreground">Sales intensity</div>
+        <div className="font-semibold text-foreground">Sales volume by center</div>
         <div className="flex gap-2">
-          <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#ef4444" }} /><span className="text-muted-foreground">High</span></div>
-          <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#f59e0b" }} /><span className="text-muted-foreground">Mid</span></div>
-          <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#2fcb6e" }} /><span className="text-muted-foreground">Low</span></div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#dc2626" }} />
+            <span className="text-muted-foreground">High</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#f59e0b" }} />
+            <span className="text-muted-foreground">Mid</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#16a34a" }} />
+            <span className="text-muted-foreground">Low</span>
+          </div>
         </div>
-        <div className="font-semibold text-foreground">Partners</div>
-        <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#2fcb6e" }} /><span className="text-muted-foreground">New (30d)</span></div>
+        <div className="font-semibold text-foreground">Customers</div>
+        <div className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#2563eb" }} />
+          <span className="text-muted-foreground">Buying/registered</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#22c55e" }} />
+          <span className="text-muted-foreground">New 30d</span>
+        </div>
       </div>
     </div>
   );

@@ -27,7 +27,7 @@ const tooltipStyle = {
 };
 
 export function PartnerSalesChart({ data }: { data?: { region: string; sales: number }[] }) {
-  const rows = data && data.length > 0 ? data : partnerSalesByRegion;
+  const rows = data ?? partnerSalesByRegion;
   return (
     <ResponsiveContainer width="100%" height={280}>
       <BarChart data={rows} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -42,7 +42,7 @@ export function PartnerSalesChart({ data }: { data?: { region: string; sales: nu
 }
 
 export function CustomerActivityChart({ data }: { data?: { week?: string; day?: string; new: number; returning: number }[] }) {
-  const rows = data && data.length > 0
+  const rows = data
     ? data.map((r) => ({ label: r.week ?? r.day ?? "", new: r.new, returning: r.returning }))
     : customerActivity.map((r) => ({ label: r.day, new: r.new, returning: r.returning }));
   return (

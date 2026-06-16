@@ -1,15 +1,22 @@
+import { useEffect, useState } from "react";
 import { Bell, Search } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function TopBar() {
-  const today = new Date().toLocaleDateString("en-NG", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const [today, setToday] = useState("—");
+
+  useEffect(() => {
+    setToday(
+      new Date().toLocaleDateString("en-NG", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+    );
+  }, []);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur md:px-6">

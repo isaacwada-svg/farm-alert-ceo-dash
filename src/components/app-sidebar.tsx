@@ -26,7 +26,7 @@ import {
 
 const items = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
-  { title: "Africa Map", url: "/map", icon: Map },
+  { title: "Africa Operations Map Activities", url: "/map", icon: Map },
   { title: "Sales", url: "/sales", icon: TrendingUp },
   { title: "Inventory", url: "/inventory", icon: Boxes },
   { title: "Customers", url: "/customers", icon: Users },

@@ -5,11 +5,15 @@ import {
   fetchSalesInvoiceItems,
   fetchStockBalance,
   fetchCustomers,
+  fetchCustomerAddressLinks,
+  fetchCustomerAddresses,
   fetchPaymentEntries,
   type SalesInvoice,
   type InvoiceItem,
   type StockRow,
   type CustomerRow,
+  type AddressLinkRow,
+  type AddressRow,
   type PaymentEntry,
 } from "./erp.server";
 
@@ -75,6 +79,29 @@ function coordsFor(label: string): { lat: number; lng: number } | null {
   return null;
 }
 
+function parseNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseCoords(record: CustomerRow | AddressRow): { lat: number; lng: number } | null {
+  const lat = parseNumber(record.latitude ?? record.custom_latitude ?? record.custom_lat);
+  const lng = parseNumber(record.longitude ?? record.custom_longitude ?? record.custom_lng);
+  if (lat !== null && lng !== null) return { lat, lng };
+  const geo = record.custom_geolocation;
+  if (!geo) return null;
+  try {
+    const parsed = JSON.parse(geo) as { lat?: unknown; lng?: unknown; latitude?: unknown; longitude?: unknown };
+    const pLat = parseNumber(parsed.lat ?? parsed.latitude);
+    const pLng = parseNumber(parsed.lng ?? parsed.longitude);
+    if (pLat !== null && pLng !== null) return { lat: pLat, lng: pLng };
+  } catch {
+    const match = geo.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (match) return { lat: Number(match[1]), lng: Number(match[2]) };
+  }
+  return null;
+}
+
 // === Public output type =========================================
 export type CenterInventory = {
   center: Center;
@@ -90,6 +117,9 @@ export type CenterSales = {
   deltaPct: number;
   sixMonthHigh: number;
   sixMonthHighMonth: string;
+  soldQtyMtd: number;
+  approvedInvoiceCountMtd: number;
+  topItemsMtd: { itemCode: string; item: string; qty: number; sales: number }[];
   recommendation: string;
 };
 
@@ -115,7 +145,15 @@ export type TopCustomer = {
 export type CenterReceivable = { center: Center; outstanding: number; advances: number };
 
 export type RegionMapPoint = {
+  id?: string;
+  type?: "center" | "customer";
   region: string;
+  center?: Center;
+  customer?: string;
+  customerName?: string;
+  address?: string;
+  registeredAt?: string;
+  lastPurchase?: string;
   lat: number;
   lng: number;
   sales: number;
@@ -177,6 +215,8 @@ function summarise(
   items: InvoiceItem[],
   stock: StockRow[],
   customers: CustomerRow[],
+  addressLinks: AddressLinkRow[],
+  addresses: AddressRow[],
   payments: PaymentEntry[],
 ): ErpOverviewOK {
   const now = new Date();
@@ -185,19 +225,48 @@ function summarise(
   const prevMonthStart = startOfPrevMonth(now);
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const invoiceByName = new Map(invoices.map((i) => [i.name, i]));
+  const approvedItems = items.filter((it) => invoiceByName.has(it.parent));
+  const itemCenter = (it: InvoiceItem): Center | null => {
+    const inv = invoiceByName.get(it.parent);
+    return centerFor(it.warehouse ?? inv?.set_warehouse, inv?.territory);
+  };
+  const itemRevenue = (it: InvoiceItem) => Number(it.net_amount ?? it.amount ?? 0);
+
+  const customerCoords = new Map<string, { lat: number; lng: number }>();
+  const customerAddressLabel = new Map<string, string>();
+  for (const c of customers) {
+    const coords = parseCoords(c);
+    if (coords) customerCoords.set(c.name, coords);
+  }
+  const addressOwner = new Map(addressLinks.map((link) => [link.parent, link.link_name]));
+  for (const a of addresses) {
+    const coords = parseCoords(a);
+    const label = [a.address_title, a.city, a.state, a.country].filter(Boolean).join(", ");
+    for (const c of customers) {
+      if (c.customer_primary_address !== a.name && addressOwner.get(a.name) !== c.name) continue;
+      if (coords) customerCoords.set(c.name, coords);
+      if (label) customerAddressLabel.set(c.name, label);
+    }
+  }
 
   // ---------- Headlines ----------
   const todayInvoices = invoices.filter((i) => i.posting_date >= today);
-  const totalSalesToday = todayInvoices.reduce((s, i) => s + (i.grand_total ?? 0), 0);
-  const totalRevenueAllTime = invoices.reduce((s, i) => s + (i.grand_total ?? 0), 0);
+  const totalSalesToday = approvedItems.reduce((s, it) => {
+    const inv = invoiceByName.get(it.parent);
+    return inv?.posting_date && inv.posting_date >= today ? s + itemRevenue(it) : s;
+  }, 0);
+  const totalRevenueAllTime = approvedItems.reduce((s, it) => s + itemRevenue(it), 0);
   const outstandingTotal = invoices.reduce((s, i) => s + (i.outstanding_amount ?? 0), 0);
   const advancesTotal = payments.reduce((s, p) => s + (p.unallocated_amount ?? 0), 0);
-  const mtdRevenue = invoices
-    .filter((i) => i.posting_date >= monthStart)
-    .reduce((s, i) => s + (i.grand_total ?? 0), 0);
-  const lastMonthRevenue = invoices
-    .filter((i) => i.posting_date >= prevMonthStart && i.posting_date < monthStart)
-    .reduce((s, i) => s + (i.grand_total ?? 0), 0);
+  const mtdRevenue = approvedItems.reduce((s, it) => {
+    const inv = invoiceByName.get(it.parent);
+    return inv?.posting_date && inv.posting_date >= monthStart ? s + itemRevenue(it) : s;
+  }, 0);
+  const lastMonthRevenue = approvedItems.reduce((s, it) => {
+    const inv = invoiceByName.get(it.parent);
+    return inv?.posting_date && inv.posting_date >= prevMonthStart && inv.posting_date < monthStart ? s + itemRevenue(it) : s;
+  }, 0);
 
   // ---------- Customers ----------
   const firstSeen = new Map<string, string>();
@@ -289,23 +358,41 @@ function summarise(
     .slice(0, 10);
 
   // ---------- Partner sales MTD by center ----------
+  // Per-center sales are calculated from approved Sales Invoice Items by their own warehouse,
+  // so invoices with mixed warehouses are not combined into the header warehouse.
   const mtdByCenter = new Map<Center, number>();
   const lastMonthByCenter = new Map<Center, number>();
-  // For 6-month high
+  const mtdQtyByCenter = new Map<Center, number>();
+  const mtdInvoicesByCenter = new Map<Center, Set<string>>();
+  const mtdItemsByCenter = new Map<Center, Map<string, { item: string; qty: number; sales: number }>>();
   const monthByCenter = new Map<string, Map<Center, number>>();
-  for (const inv of invoices) {
-    const c = centerFor(inv.set_warehouse, inv.territory);
+  for (const it of approvedItems) {
+    const inv = invoiceByName.get(it.parent);
+    if (!inv) continue;
+    const c = itemCenter(it);
     if (!c) continue;
+    const revenue = itemRevenue(it);
+    const qty = Number(it.qty ?? 0);
     if (inv.posting_date >= monthStart) {
-      mtdByCenter.set(c, (mtdByCenter.get(c) ?? 0) + (inv.grand_total ?? 0));
+      mtdByCenter.set(c, (mtdByCenter.get(c) ?? 0) + revenue);
+      mtdQtyByCenter.set(c, (mtdQtyByCenter.get(c) ?? 0) + qty);
+      if (!mtdInvoicesByCenter.has(c)) mtdInvoicesByCenter.set(c, new Set());
+      mtdInvoicesByCenter.get(c)!.add(it.parent);
+      if (!mtdItemsByCenter.has(c)) mtdItemsByCenter.set(c, new Map());
+      const byItem = mtdItemsByCenter.get(c)!;
+      const key = it.item_code;
+      const cur = byItem.get(key) ?? { item: it.item_name ?? it.item_code, qty: 0, sales: 0 };
+      cur.qty += qty;
+      cur.sales += revenue;
+      byItem.set(key, cur);
     }
     if (inv.posting_date >= prevMonthStart && inv.posting_date < monthStart) {
-      lastMonthByCenter.set(c, (lastMonthByCenter.get(c) ?? 0) + (inv.grand_total ?? 0));
+      lastMonthByCenter.set(c, (lastMonthByCenter.get(c) ?? 0) + revenue);
     }
     const monthKey = inv.posting_date.slice(0, 7);
     if (!monthByCenter.has(monthKey)) monthByCenter.set(monthKey, new Map());
     const m = monthByCenter.get(monthKey)!;
-    m.set(c, (m.get(c) ?? 0) + (inv.grand_total ?? 0));
+    m.set(c, (m.get(c) ?? 0) + revenue);
   }
 
   const partnerSalesByRegion = CENTERS.map((center) => ({
@@ -337,6 +424,12 @@ function summarise(
       deltaPct,
       sixMonthHigh: high,
       sixMonthHighMonth: highMonth,
+      soldQtyMtd: +(mtdQtyByCenter.get(center) ?? 0).toFixed(2),
+      approvedInvoiceCountMtd: mtdInvoicesByCenter.get(center)?.size ?? 0,
+      topItemsMtd: [...(mtdItemsByCenter.get(center)?.entries() ?? [])]
+        .map(([itemCode, v]) => ({ itemCode, item: v.item, qty: +v.qty.toFixed(2), sales: +v.sales.toFixed(0) }))
+        .sort((a, b) => b.sales - a.sales)
+        .slice(0, 5),
       recommendation: rec,
     };
   });
@@ -350,10 +443,11 @@ function summarise(
     stockByCenter.get(c)!.push(r);
   }
 
-  function buildCenterInventory(rows: StockRow[]): { out: any[]; low: any[]; ok: any[] } {
-    const out: any[] = [];
-    const low: any[] = [];
-    const ok: any[] = [];
+  type InventoryItem = { sku: string; product: string; qty: number };
+  function buildCenterInventory(rows: StockRow[]): { out: InventoryItem[]; low: InventoryItem[]; ok: InventoryItem[] } {
+    const out: InventoryItem[] = [];
+    const low: InventoryItem[] = [];
+    const ok: InventoryItem[] = [];
     for (const r of rows) {
       const qty = Number(r.bal_qty ?? 0);
       const item = {
@@ -390,14 +484,13 @@ function summarise(
   });
 
   // ---------- Product forecast (90d) ----------
-  const invoiceDate = new Map(invoices.map((i) => [i.name, i.posting_date]));
   const itemAgg = new Map<string, { name: string; qty: number; revenue: number }>();
-  for (const it of items) {
-    const date = invoiceDate.get(it.parent);
-    if (!date || date < thirtyDaysAgo) continue;
+  for (const it of approvedItems) {
+    const inv = invoiceByName.get(it.parent);
+    if (!inv || inv.posting_date < thirtyDaysAgo) continue;
     const cur = itemAgg.get(it.item_code) ?? { name: it.item_name ?? it.item_code, qty: 0, revenue: 0 };
     cur.qty += Number(it.qty ?? 0);
-    cur.revenue += Number(it.amount ?? 0);
+    cur.revenue += itemRevenue(it);
     itemAgg.set(it.item_code, cur);
   }
   const productForecast: ProductForecast[] = [...itemAgg.entries()]
@@ -412,13 +505,14 @@ function summarise(
     .sort((a, b) => b.projected90dRevenue - a.projected90dRevenue)
     .slice(0, 20);
 
-  // Per-center 90-day projection (× 3 of last 30 days at center)
+  // Per-center 90-day projection (× 3 of last 30 days at item warehouse)
   const centerLast30Revenue = new Map<Center, number>();
-  for (const inv of invoices) {
-    if (inv.posting_date < thirtyDaysAgo) continue;
-    const c = centerFor(inv.set_warehouse, inv.territory);
+  for (const it of approvedItems) {
+    const inv = invoiceByName.get(it.parent);
+    if (!inv || inv.posting_date < thirtyDaysAgo) continue;
+    const c = itemCenter(it);
     if (!c) continue;
-    centerLast30Revenue.set(c, (centerLast30Revenue.get(c) ?? 0) + (inv.grand_total ?? 0));
+    centerLast30Revenue.set(c, (centerLast30Revenue.get(c) ?? 0) + itemRevenue(it));
   }
   const centerForecast = CENTERS.map((center) => ({
     center,
@@ -450,31 +544,64 @@ function summarise(
     advances: advByCenter.get(center) ?? 0,
   }));
 
-  // ---------- Map: highest selling regions + new partners ----------
-  const regionAgg = new Map<string, { sales: number; customers: Set<string>; newPartners: number }>();
-  for (const inv of invoices) {
-    if (inv.posting_date < monthStart) continue;
-    const c = centerFor(inv.set_warehouse, inv.territory);
-    const label = c ?? (inv.territory || "Other");
-    if (!regionAgg.has(label)) regionAgg.set(label, { sales: 0, customers: new Set(), newPartners: 0 });
-    const e = regionAgg.get(label)!;
-    e.sales += inv.grand_total ?? 0;
-    e.customers.add(inv.customer);
+  // ---------- Map: center sales intensity + exact customer locations ----------
+  const centerMapAgg = new Map<Center, { sales: number; customers: Set<string>; newPartners: number }>();
+  const customerMapAgg = new Map<string, { sales: number; center: Center | null; lastPurchase: string }>();
+  for (const it of approvedItems) {
+    const inv = invoiceByName.get(it.parent);
+    if (!inv) continue;
+    const c = itemCenter(it);
+    if (!c) continue;
+    const sales = itemRevenue(it);
+    if (inv.posting_date >= monthStart) {
+      if (!centerMapAgg.has(c)) centerMapAgg.set(c, { sales: 0, customers: new Set(), newPartners: 0 });
+      const e = centerMapAgg.get(c)!;
+      e.sales += sales;
+      e.customers.add(inv.customer);
+      const cur = customerMapAgg.get(inv.customer) ?? { sales: 0, center: c, lastPurchase: inv.posting_date };
+      cur.sales += sales;
+      cur.center = c;
+      if (inv.posting_date > cur.lastPurchase) cur.lastPurchase = inv.posting_date;
+      customerMapAgg.set(inv.customer, cur);
+    }
   }
   for (const [cust, fdate] of firstSeen) {
     if (fdate < thirtyDaysAgo) continue;
-    const region = customerRegion.get(cust) ?? "Other";
-    if (!regionAgg.has(region)) regionAgg.set(region, { sales: 0, customers: new Set(), newPartners: 0 });
-    regionAgg.get(region)!.newPartners++;
+    const c = customerMapAgg.get(cust)?.center ?? centerFor(null, customerRegion.get(cust));
+    if (!c) continue;
+    if (!centerMapAgg.has(c)) centerMapAgg.set(c, { sales: 0, customers: new Set(), newPartners: 0 });
+    centerMapAgg.get(c)!.newPartners++;
   }
-  const regionMapPoints: RegionMapPoint[] = [...regionAgg.entries()]
-    .map(([region, v]) => {
-      const co = coordsFor(region);
-      return co
-        ? { region, lat: co.lat, lng: co.lng, sales: v.sales, customers: v.customers.size, newPartners: v.newPartners }
-        : null;
-    })
-    .filter((x): x is RegionMapPoint => x !== null);
+  const centerPoints: RegionMapPoint[] = CENTERS.map((center) => {
+    const co = coordsFor(center)!;
+    const v = centerMapAgg.get(center) ?? { sales: 0, customers: new Set<string>(), newPartners: 0 };
+    return { id: `center-${center}`, type: "center", region: `${center} Distribution Center`, center, lat: co.lat, lng: co.lng, sales: v.sales, customers: v.customers.size, newPartners: v.newPartners };
+  });
+  const customerPoints = customers.reduce<RegionMapPoint[]>((acc, c) => {
+      const co = customerCoords.get(c.name);
+      const purchase = customerMapAgg.get(c.name);
+      const isNew = (firstSeen.get(c.name) ?? "") >= thirtyDaysAgo;
+      if (!co || (!purchase && !isNew)) return acc;
+      const center = purchase?.center ?? centerFor(null, customerRegion.get(c.name));
+      acc.push({
+        id: `customer-${c.name}`,
+        type: "customer",
+        region: c.territory ?? center ?? "Customer location",
+        center: center ?? undefined,
+        customer: c.name,
+        customerName: customerName.get(c.name) ?? c.customer_name ?? c.name,
+        address: customerAddressLabel.get(c.name) ?? c.customer_primary_address ?? undefined,
+        registeredAt: firstSeen.get(c.name) ?? c.creation?.slice(0, 10),
+        lastPurchase: purchase?.lastPurchase ?? lastSeen.get(c.name),
+        lat: co.lat,
+        lng: co.lng,
+        sales: purchase?.sales ?? 0,
+        customers: 1,
+        newPartners: isNew ? 1 : 0,
+      });
+      return acc;
+    }, []);
+  const regionMapPoints = [...centerPoints, ...customerPoints];
 
   // ---------- Red alerts derived from inventory ----------
   const redAlertsByCenter = CENTERS.map((center) => {
@@ -553,7 +680,15 @@ export const getErpOverview = createServerFn({ method: "GET" }).handler(async ()
       fetchCustomers(0).catch(() => [] as CustomerRow[]),
       fetchPaymentEntries(0).catch(() => [] as PaymentEntry[]),
     ]);
-    return summarise(invoices, items, stock, customers, payments);
+    const addressLinks = await fetchCustomerAddressLinks(customers.map((c) => c.name)).catch(
+      () => [] as AddressLinkRow[],
+    );
+    const addressNames = [
+      ...customers.map((c) => c.customer_primary_address).filter((name): name is string => Boolean(name)),
+      ...addressLinks.map((link) => link.parent),
+    ];
+    const addresses = await fetchCustomerAddresses(addressNames).catch(() => [] as AddressRow[]);
+    return summarise(invoices, items, stock, customers, addressLinks, addresses, payments);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

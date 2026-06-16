@@ -131,8 +131,8 @@ function OverviewPage() {
         <div className="rounded-xl border border-border bg-card p-5 xl:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-foreground">Africa Operations Map</h2>
-              <p className="text-xs text-muted-foreground">Top selling regions and new partner locations (live).</p>
+              <h2 className="text-base font-semibold text-foreground">Africa Operations Map Activities</h2>
+              <p className="text-xs text-muted-foreground">Sales-volume centers and geocoded customer activity (live).</p>
             </div>
             <a href="/map" className="inline-flex items-center gap-1 text-xs font-medium text-brand-navy hover:text-brand-green">
               Open full map <ExternalLink className="h-3 w-3" />
@@ -271,7 +271,9 @@ function OverviewPage() {
   );
 }
 
-function CenterInventoryBlock({ ci }: { ci: { center: string; out: any[]; low: any[]; ok: any[] } }) {
+type InventoryLine = { sku: string; product: string; qty: number };
+
+function CenterInventoryBlock({ ci }: { ci: { center: string; out: InventoryLine[]; low: InventoryLine[]; ok: InventoryLine[] } }) {
   return (
     <div className="space-y-2">
       <InventoryGroup label="Out of Stock" tone="destructive" rows={ci.out} />
@@ -288,7 +290,7 @@ function InventoryGroup({
 }: {
   label: string;
   tone: "destructive" | "warn" | "ok";
-  rows: { sku: string; product: string; qty: number }[];
+  rows: InventoryLine[];
 }) {
   if (rows.length === 0) return null;
   const cls =
