@@ -271,7 +271,9 @@ function OverviewPage() {
   );
 }
 
-function CenterInventoryBlock({ ci }: { ci: { center: string; out: any[]; low: any[]; ok: any[] } }) {
+type InventoryLine = { sku: string; product: string; qty: number };
+
+function CenterInventoryBlock({ ci }: { ci: { center: string; out: InventoryLine[]; low: InventoryLine[]; ok: InventoryLine[] } }) {
   return (
     <div className="space-y-2">
       <InventoryGroup label="Out of Stock" tone="destructive" rows={ci.out} />
@@ -288,7 +290,7 @@ function InventoryGroup({
 }: {
   label: string;
   tone: "destructive" | "warn" | "ok";
-  rows: { sku: string; product: string; qty: number }[];
+  rows: InventoryLine[];
 }) {
   if (rows.length === 0) return null;
   const cls =
