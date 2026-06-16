@@ -5,11 +5,13 @@ import {
   fetchSalesInvoiceItems,
   fetchStockBalance,
   fetchCustomers,
+  fetchCustomerAddresses,
   fetchPaymentEntries,
   type SalesInvoice,
   type InvoiceItem,
   type StockRow,
   type CustomerRow,
+  type AddressRow,
   type PaymentEntry,
 } from "./erp.server";
 
@@ -90,6 +92,9 @@ export type CenterSales = {
   deltaPct: number;
   sixMonthHigh: number;
   sixMonthHighMonth: string;
+  soldQtyMtd: number;
+  approvedInvoiceCountMtd: number;
+  topItemsMtd: { itemCode: string; item: string; qty: number; sales: number }[];
   recommendation: string;
 };
 
@@ -115,7 +120,15 @@ export type TopCustomer = {
 export type CenterReceivable = { center: Center; outstanding: number; advances: number };
 
 export type RegionMapPoint = {
+  id?: string;
+  type?: "center" | "customer";
   region: string;
+  center?: Center;
+  customer?: string;
+  customerName?: string;
+  address?: string;
+  registeredAt?: string;
+  lastPurchase?: string;
   lat: number;
   lng: number;
   sales: number;
