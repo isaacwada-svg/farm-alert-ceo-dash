@@ -496,13 +496,14 @@ function summarise(
     .sort((a, b) => b.projected90dRevenue - a.projected90dRevenue)
     .slice(0, 20);
 
-  // Per-center 90-day projection (× 3 of last 30 days at center)
+  // Per-center 90-day projection (× 3 of last 30 days at item warehouse)
   const centerLast30Revenue = new Map<Center, number>();
-  for (const inv of invoices) {
+  for (const it of approvedItems) {
+    const inv = invoiceByName.get(it.parent);
     if (inv.posting_date < thirtyDaysAgo) continue;
-    const c = centerFor(inv.set_warehouse, inv.territory);
+    const c = itemCenter(it);
     if (!c) continue;
-    centerLast30Revenue.set(c, (centerLast30Revenue.get(c) ?? 0) + (inv.grand_total ?? 0));
+    centerLast30Revenue.set(c, (centerLast30Revenue.get(c) ?? 0) + itemRevenue(it));
   }
   const centerForecast = CENTERS.map((center) => ({
     center,
@@ -534,31 +535,65 @@ function summarise(
     advances: advByCenter.get(center) ?? 0,
   }));
 
-  // ---------- Map: highest selling regions + new partners ----------
-  const regionAgg = new Map<string, { sales: number; customers: Set<string>; newPartners: number }>();
-  for (const inv of invoices) {
-    if (inv.posting_date < monthStart) continue;
-    const c = centerFor(inv.set_warehouse, inv.territory);
-    const label = c ?? (inv.territory || "Other");
-    if (!regionAgg.has(label)) regionAgg.set(label, { sales: 0, customers: new Set(), newPartners: 0 });
-    const e = regionAgg.get(label)!;
-    e.sales += inv.grand_total ?? 0;
-    e.customers.add(inv.customer);
+  // ---------- Map: center sales intensity + exact customer locations ----------
+  const centerMapAgg = new Map<Center, { sales: number; customers: Set<string>; newPartners: number }>();
+  const customerMapAgg = new Map<string, { sales: number; center: Center | null; lastPurchase: string }>();
+  for (const it of approvedItems) {
+    const inv = invoiceByName.get(it.parent);
+    if (!inv) continue;
+    const c = itemCenter(it);
+    if (!c) continue;
+    const sales = itemRevenue(it);
+    if (inv.posting_date >= monthStart) {
+      if (!centerMapAgg.has(c)) centerMapAgg.set(c, { sales: 0, customers: new Set(), newPartners: 0 });
+      const e = centerMapAgg.get(c)!;
+      e.sales += sales;
+      e.customers.add(inv.customer);
+      const cur = customerMapAgg.get(inv.customer) ?? { sales: 0, center: c, lastPurchase: inv.posting_date };
+      cur.sales += sales;
+      cur.center = c;
+      if (inv.posting_date > cur.lastPurchase) cur.lastPurchase = inv.posting_date;
+      customerMapAgg.set(inv.customer, cur);
+    }
   }
   for (const [cust, fdate] of firstSeen) {
     if (fdate < thirtyDaysAgo) continue;
-    const region = customerRegion.get(cust) ?? "Other";
-    if (!regionAgg.has(region)) regionAgg.set(region, { sales: 0, customers: new Set(), newPartners: 0 });
-    regionAgg.get(region)!.newPartners++;
+    const c = customerMapAgg.get(cust)?.center ?? centerFor(null, customerRegion.get(cust));
+    if (!c) continue;
+    if (!centerMapAgg.has(c)) centerMapAgg.set(c, { sales: 0, customers: new Set(), newPartners: 0 });
+    centerMapAgg.get(c)!.newPartners++;
   }
-  const regionMapPoints: RegionMapPoint[] = [...regionAgg.entries()]
-    .map(([region, v]) => {
-      const co = coordsFor(region);
-      return co
-        ? { region, lat: co.lat, lng: co.lng, sales: v.sales, customers: v.customers.size, newPartners: v.newPartners }
-        : null;
+  const centerPoints: RegionMapPoint[] = CENTERS.map((center) => {
+    const co = coordsFor(center)!;
+    const v = centerMapAgg.get(center) ?? { sales: 0, customers: new Set<string>(), newPartners: 0 };
+    return { id: `center-${center}`, type: "center", region: `${center} Distribution Center`, center, lat: co.lat, lng: co.lng, sales: v.sales, customers: v.customers.size, newPartners: v.newPartners };
+  });
+  const customerPoints: RegionMapPoint[] = customers
+    .map((c) => {
+      const co = customerCoords.get(c.name);
+      const purchase = customerMapAgg.get(c.name);
+      const isNew = (firstSeen.get(c.name) ?? "") >= thirtyDaysAgo;
+      if (!co || (!purchase && !isNew)) return null;
+      const center = purchase?.center ?? centerFor(null, customerRegion.get(c.name));
+      return {
+        id: `customer-${c.name}`,
+        type: "customer" as const,
+        region: c.territory ?? center ?? "Customer location",
+        center: center ?? undefined,
+        customer: c.name,
+        customerName: customerName.get(c.name) ?? c.customer_name ?? c.name,
+        address: customerAddressLabel.get(c.name) ?? c.customer_primary_address ?? undefined,
+        registeredAt: firstSeen.get(c.name) ?? c.creation?.slice(0, 10),
+        lastPurchase: purchase?.lastPurchase ?? lastSeen.get(c.name),
+        lat: co.lat,
+        lng: co.lng,
+        sales: purchase?.sales ?? 0,
+        customers: 1,
+        newPartners: isNew ? 1 : 0,
+      };
     })
     .filter((x): x is RegionMapPoint => x !== null);
+  const regionMapPoints = [...centerPoints, ...customerPoints];
 
   // ---------- Red alerts derived from inventory ----------
   const redAlertsByCenter = CENTERS.map((center) => {
