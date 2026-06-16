@@ -24,7 +24,7 @@ function SalesPage() {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-5">
-        <h2 className="mb-3 text-base font-semibold text-foreground">Partner Sales · This Month (₦M)</h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">Approved Sales by Warehouse · This Month (₦M)</h2>
         <PartnerSalesChart data={live?.partnerSalesByRegion} />
       </div>
 
@@ -48,6 +48,38 @@ function SalesPage() {
               </div>
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div>
+                  <div className="text-[10px] uppercase text-muted-foreground">Approved invoices</div>
+                  <div className="font-semibold text-foreground">{c.approvedInvoiceCountMtd.toLocaleString()}</div>
+                  <div className="text-[10px] text-muted-foreground">Qty sold: {c.soldQtyMtd.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="mt-3 rounded-md border border-border bg-muted/30 p-2.5">
+                <div className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Actual items sold from this warehouse</div>
+                <div className="space-y-1.5">
+                  {c.topItemsMtd.map((item) => (
+                    <div key={item.itemCode} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="min-w-0 truncate text-foreground">{item.item}</span>
+                      <span className="shrink-0 text-muted-foreground">{item.qty.toLocaleString()} · {formatNaira(item.sales)}</span>
+                    </div>
+                  ))}
+                  {c.topItemsMtd.length === 0 && <div className="text-xs text-muted-foreground">No approved item sales this month.</div>}
+                </div>
+              </div>
+              <div className="mt-3 rounded-md border border-brand-navy/10 bg-brand-navy/5 p-2.5 text-xs text-foreground">
+                <strong className="text-brand-navy">Recommendation:</strong> {c.recommendation}
+              </div>
+            </div>
+          );
+        })}
+        {(!live || live.centerSales.length === 0) && (
+          <div className="col-span-2 rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+            Loading per-center sales from ERP…
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
                   <div className="text-[10px] uppercase text-muted-foreground">MTD</div>
                   <div className="font-semibold text-foreground">{formatNaira(c.mtd)}</div>
                 </div>
