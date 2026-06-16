@@ -439,10 +439,11 @@ function summarise(
     stockByCenter.get(c)!.push(r);
   }
 
-  function buildCenterInventory(rows: StockRow[]): { out: any[]; low: any[]; ok: any[] } {
-    const out: any[] = [];
-    const low: any[] = [];
-    const ok: any[] = [];
+  type InventoryItem = { sku: string; product: string; qty: number };
+  function buildCenterInventory(rows: StockRow[]): { out: InventoryItem[]; low: InventoryItem[]; ok: InventoryItem[] } {
+    const out: InventoryItem[] = [];
+    const low: InventoryItem[] = [];
+    const ok: InventoryItem[] = [];
     for (const r of rows) {
       const qty = Number(r.bal_qty ?? 0);
       const item = {
