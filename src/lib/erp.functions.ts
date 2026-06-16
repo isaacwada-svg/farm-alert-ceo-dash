@@ -215,6 +215,7 @@ function summarise(
   items: InvoiceItem[],
   stock: StockRow[],
   customers: CustomerRow[],
+  addressLinks: AddressLinkRow[],
   addresses: AddressRow[],
   payments: PaymentEntry[],
 ): ErpOverviewOK {
@@ -238,11 +239,12 @@ function summarise(
     const coords = parseCoords(c);
     if (coords) customerCoords.set(c.name, coords);
   }
+  const addressOwner = new Map(addressLinks.map((link) => [link.parent, link.link_name]));
   for (const a of addresses) {
     const coords = parseCoords(a);
     const label = [a.address_title, a.city, a.state, a.country].filter(Boolean).join(", ");
     for (const c of customers) {
-      if (c.customer_primary_address !== a.name) continue;
+      if (c.customer_primary_address !== a.name && addressOwner.get(a.name) !== c.name) continue;
       if (coords) customerCoords.set(c.name, coords);
       if (label) customerAddressLabel.set(c.name, label);
     }
