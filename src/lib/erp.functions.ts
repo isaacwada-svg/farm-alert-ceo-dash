@@ -349,23 +349,41 @@ function summarise(
     .slice(0, 10);
 
   // ---------- Partner sales MTD by center ----------
+  // Per-center sales are calculated from approved Sales Invoice Items by their own warehouse,
+  // so invoices with mixed warehouses are not combined into the header warehouse.
   const mtdByCenter = new Map<Center, number>();
   const lastMonthByCenter = new Map<Center, number>();
-  // For 6-month high
+  const mtdQtyByCenter = new Map<Center, number>();
+  const mtdInvoicesByCenter = new Map<Center, Set<string>>();
+  const mtdItemsByCenter = new Map<Center, Map<string, { item: string; qty: number; sales: number }>>();
   const monthByCenter = new Map<string, Map<Center, number>>();
-  for (const inv of invoices) {
-    const c = centerFor(inv.set_warehouse, inv.territory);
+  for (const it of approvedItems) {
+    const inv = invoiceByName.get(it.parent);
+    if (!inv) continue;
+    const c = itemCenter(it);
     if (!c) continue;
+    const revenue = itemRevenue(it);
+    const qty = Number(it.qty ?? 0);
     if (inv.posting_date >= monthStart) {
-      mtdByCenter.set(c, (mtdByCenter.get(c) ?? 0) + (inv.grand_total ?? 0));
+      mtdByCenter.set(c, (mtdByCenter.get(c) ?? 0) + revenue);
+      mtdQtyByCenter.set(c, (mtdQtyByCenter.get(c) ?? 0) + qty);
+      if (!mtdInvoicesByCenter.has(c)) mtdInvoicesByCenter.set(c, new Set());
+      mtdInvoicesByCenter.get(c)!.add(it.parent);
+      if (!mtdItemsByCenter.has(c)) mtdItemsByCenter.set(c, new Map());
+      const byItem = mtdItemsByCenter.get(c)!;
+      const key = it.item_code;
+      const cur = byItem.get(key) ?? { item: it.item_name ?? it.item_code, qty: 0, sales: 0 };
+      cur.qty += qty;
+      cur.sales += revenue;
+      byItem.set(key, cur);
     }
     if (inv.posting_date >= prevMonthStart && inv.posting_date < monthStart) {
-      lastMonthByCenter.set(c, (lastMonthByCenter.get(c) ?? 0) + (inv.grand_total ?? 0));
+      lastMonthByCenter.set(c, (lastMonthByCenter.get(c) ?? 0) + revenue);
     }
     const monthKey = inv.posting_date.slice(0, 7);
     if (!monthByCenter.has(monthKey)) monthByCenter.set(monthKey, new Map());
     const m = monthByCenter.get(monthKey)!;
-    m.set(c, (m.get(c) ?? 0) + (inv.grand_total ?? 0));
+    m.set(c, (m.get(c) ?? 0) + revenue);
   }
 
   const partnerSalesByRegion = CENTERS.map((center) => ({
@@ -397,6 +415,12 @@ function summarise(
       deltaPct,
       sixMonthHigh: high,
       sixMonthHighMonth: highMonth,
+      soldQtyMtd: +(mtdQtyByCenter.get(center) ?? 0).toFixed(2),
+      approvedInvoiceCountMtd: mtdInvoicesByCenter.get(center)?.size ?? 0,
+      topItemsMtd: [...(mtdItemsByCenter.get(center)?.entries() ?? [])]
+        .map(([itemCode, v]) => ({ itemCode, item: v.item, qty: +v.qty.toFixed(2), sales: +v.sales.toFixed(0) }))
+        .sort((a, b) => b.sales - a.sales)
+        .slice(0, 5),
       recommendation: rec,
     };
   });
