@@ -77,6 +77,29 @@ function coordsFor(label: string): { lat: number; lng: number } | null {
   return null;
 }
 
+function parseNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseCoords(record: CustomerRow | AddressRow): { lat: number; lng: number } | null {
+  const lat = parseNumber(record.latitude ?? record.custom_latitude ?? record.custom_lat);
+  const lng = parseNumber(record.longitude ?? record.custom_longitude ?? record.custom_lng);
+  if (lat !== null && lng !== null) return { lat, lng };
+  const geo = record.custom_geolocation;
+  if (!geo) return null;
+  try {
+    const parsed = JSON.parse(geo) as { lat?: unknown; lng?: unknown; latitude?: unknown; longitude?: unknown };
+    const pLat = parseNumber(parsed.lat ?? parsed.latitude);
+    const pLng = parseNumber(parsed.lng ?? parsed.longitude);
+    if (pLat !== null && pLng !== null) return { lat: pLat, lng: pLng };
+  } catch {
+    const match = geo.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (match) return { lat: Number(match[1]), lng: Number(match[2]) };
+  }
+  return null;
+}
+
 // === Public output type =========================================
 export type CenterInventory = {
   center: Center;
