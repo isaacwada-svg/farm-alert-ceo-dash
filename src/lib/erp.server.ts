@@ -101,13 +101,8 @@ export type InvoiceItem = {
 
 export async function fetchSalesInvoiceItems(limit = 0): Promise<InvoiceItem[]> {
   const fields = JSON.stringify(["parent", "item_code", "item_name", "qty", "amount", "net_amount", "warehouse"]);
-  const filters = JSON.stringify([
-    ["docstatus", "=", 1],
-    ["parenttype", "=", "Sales Invoice"],
-  ]);
   const params = new URLSearchParams({
     fields,
-    filters,
     limit_page_length: String(limit),
     order_by: "creation desc",
   });
@@ -159,7 +154,24 @@ export type CustomerRow = {
   custom_lat?: number | string | null;
   custom_lng?: number | string | null;
   custom_geolocation?: string | null;
+  linkedCustomer?: string;
 };
+
+export type AddressLinkRow = { parent: string; link_name: string };
+
+export async function fetchCustomerAddressLinks(customerNames: string[]): Promise<AddressLinkRow[]> {
+  const clean = [...new Set(customerNames.filter(Boolean))].slice(0, 2000);
+  if (clean.length === 0) return [];
+  const fields = JSON.stringify(["parent", "link_name"]);
+  const filters = JSON.stringify([
+    ["parenttype", "=", "Address"],
+    ["link_doctype", "=", "Customer"],
+    ["link_name", "in", clean],
+  ]);
+  const params = new URLSearchParams({ fields, filters, limit_page_length: String(clean.length * 2) });
+  const data = await erpFetch(`/api/resource/Dynamic Link?${params.toString()}`);
+  return (data?.data ?? []) as AddressLinkRow[];
+}
 
 export type AddressRow = {
   name: string;
