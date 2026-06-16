@@ -131,7 +131,7 @@ function OverviewPage() {
         <div className="rounded-xl border border-border bg-card p-5 xl:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-foreground">Africa Operations Map</h2>
+              <h2 className="text-base font-semibold text-foreground">Africa Operations Map Activities</h2>
               <p className="text-xs text-muted-foreground">Top selling regions and new partner locations (live).</p>
             </div>
             <a href="/map" className="inline-flex items-center gap-1 text-xs font-medium text-brand-navy hover:text-brand-green">
