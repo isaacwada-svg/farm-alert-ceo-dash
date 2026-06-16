@@ -226,7 +226,7 @@ function summarise(
   const approvedItems = items.filter((it) => invoiceByName.has(it.parent));
   const itemCenter = (it: InvoiceItem): Center | null => {
     const inv = invoiceByName.get(it.parent);
-    return centerFor(it.warehouse, inv?.set_warehouse ?? inv?.territory);
+    return centerFor(it.warehouse ?? inv?.set_warehouse, inv?.territory);
   };
   const itemRevenue = (it: InvoiceItem) => Number(it.net_amount ?? it.amount ?? 0);
 
@@ -248,16 +248,21 @@ function summarise(
 
   // ---------- Headlines ----------
   const todayInvoices = invoices.filter((i) => i.posting_date >= today);
-  const totalSalesToday = todayInvoices.reduce((s, i) => s + (i.grand_total ?? 0), 0);
-  const totalRevenueAllTime = invoices.reduce((s, i) => s + (i.grand_total ?? 0), 0);
+  const totalSalesToday = approvedItems.reduce((s, it) => {
+    const inv = invoiceByName.get(it.parent);
+    return inv?.posting_date && inv.posting_date >= today ? s + itemRevenue(it) : s;
+  }, 0);
+  const totalRevenueAllTime = approvedItems.reduce((s, it) => s + itemRevenue(it), 0);
   const outstandingTotal = invoices.reduce((s, i) => s + (i.outstanding_amount ?? 0), 0);
   const advancesTotal = payments.reduce((s, p) => s + (p.unallocated_amount ?? 0), 0);
-  const mtdRevenue = invoices
-    .filter((i) => i.posting_date >= monthStart)
-    .reduce((s, i) => s + (i.grand_total ?? 0), 0);
-  const lastMonthRevenue = invoices
-    .filter((i) => i.posting_date >= prevMonthStart && i.posting_date < monthStart)
-    .reduce((s, i) => s + (i.grand_total ?? 0), 0);
+  const mtdRevenue = approvedItems.reduce((s, it) => {
+    const inv = invoiceByName.get(it.parent);
+    return inv?.posting_date && inv.posting_date >= monthStart ? s + itemRevenue(it) : s;
+  }, 0);
+  const lastMonthRevenue = approvedItems.reduce((s, it) => {
+    const inv = invoiceByName.get(it.parent);
+    return inv?.posting_date && inv.posting_date >= prevMonthStart && inv.posting_date < monthStart ? s + itemRevenue(it) : s;
+  }, 0);
 
   // ---------- Customers ----------
   const firstSeen = new Map<string, string>();
