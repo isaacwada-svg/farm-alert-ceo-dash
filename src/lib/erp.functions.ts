@@ -213,6 +213,7 @@ function summarise(
   items: InvoiceItem[],
   stock: StockRow[],
   customers: CustomerRow[],
+  addresses: AddressRow[],
   payments: PaymentEntry[],
 ): ErpOverviewOK {
   const now = new Date();
@@ -221,6 +222,29 @@ function summarise(
   const prevMonthStart = startOfPrevMonth(now);
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const invoiceByName = new Map(invoices.map((i) => [i.name, i]));
+  const approvedItems = items.filter((it) => invoiceByName.has(it.parent));
+  const itemCenter = (it: InvoiceItem): Center | null => {
+    const inv = invoiceByName.get(it.parent);
+    return centerFor(it.warehouse, inv?.set_warehouse ?? inv?.territory);
+  };
+  const itemRevenue = (it: InvoiceItem) => Number(it.net_amount ?? it.amount ?? 0);
+
+  const customerCoords = new Map<string, { lat: number; lng: number }>();
+  const customerAddressLabel = new Map<string, string>();
+  for (const c of customers) {
+    const coords = parseCoords(c);
+    if (coords) customerCoords.set(c.name, coords);
+  }
+  for (const a of addresses) {
+    const coords = parseCoords(a);
+    const label = [a.address_title, a.city, a.state, a.country].filter(Boolean).join(", ");
+    for (const c of customers) {
+      if (c.customer_primary_address !== a.name) continue;
+      if (coords) customerCoords.set(c.name, coords);
+      if (label) customerAddressLabel.set(c.name, label);
+    }
+  }
 
   // ---------- Headlines ----------
   const todayInvoices = invoices.filter((i) => i.posting_date >= today);
