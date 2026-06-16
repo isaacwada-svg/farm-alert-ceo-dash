@@ -474,14 +474,13 @@ function summarise(
   });
 
   // ---------- Product forecast (90d) ----------
-  const invoiceDate = new Map(invoices.map((i) => [i.name, i.posting_date]));
   const itemAgg = new Map<string, { name: string; qty: number; revenue: number }>();
-  for (const it of items) {
-    const date = invoiceDate.get(it.parent);
-    if (!date || date < thirtyDaysAgo) continue;
+  for (const it of approvedItems) {
+    const inv = invoiceByName.get(it.parent);
+    if (!inv || inv.posting_date < thirtyDaysAgo) continue;
     const cur = itemAgg.get(it.item_code) ?? { name: it.item_name ?? it.item_code, qty: 0, revenue: 0 };
     cur.qty += Number(it.qty ?? 0);
-    cur.revenue += Number(it.amount ?? 0);
+    cur.revenue += itemRevenue(it);
     itemAgg.set(it.item_code, cur);
   }
   const productForecast: ProductForecast[] = [...itemAgg.entries()]
@@ -500,7 +499,7 @@ function summarise(
   const centerLast30Revenue = new Map<Center, number>();
   for (const it of approvedItems) {
     const inv = invoiceByName.get(it.parent);
-    if (inv.posting_date < thirtyDaysAgo) continue;
+    if (!inv || inv.posting_date < thirtyDaysAgo) continue;
     const c = itemCenter(it);
     if (!c) continue;
     centerLast30Revenue.set(c, (centerLast30Revenue.get(c) ?? 0) + itemRevenue(it));
@@ -568,16 +567,15 @@ function summarise(
     const v = centerMapAgg.get(center) ?? { sales: 0, customers: new Set<string>(), newPartners: 0 };
     return { id: `center-${center}`, type: "center", region: `${center} Distribution Center`, center, lat: co.lat, lng: co.lng, sales: v.sales, customers: v.customers.size, newPartners: v.newPartners };
   });
-  const customerPoints: RegionMapPoint[] = customers
-    .map((c) => {
+  const customerPoints = customers.reduce<RegionMapPoint[]>((acc, c) => {
       const co = customerCoords.get(c.name);
       const purchase = customerMapAgg.get(c.name);
       const isNew = (firstSeen.get(c.name) ?? "") >= thirtyDaysAgo;
-      if (!co || (!purchase && !isNew)) return null;
+      if (!co || (!purchase && !isNew)) return acc;
       const center = purchase?.center ?? centerFor(null, customerRegion.get(c.name));
-      return {
+      acc.push({
         id: `customer-${c.name}`,
-        type: "customer" as const,
+        type: "customer",
         region: c.territory ?? center ?? "Customer location",
         center: center ?? undefined,
         customer: c.name,
@@ -590,9 +588,9 @@ function summarise(
         sales: purchase?.sales ?? 0,
         customers: 1,
         newPartners: isNew ? 1 : 0,
-      };
-    })
-    .filter((x): x is RegionMapPoint => x !== null);
+      });
+      return acc;
+    }, []);
   const regionMapPoints = [...centerPoints, ...customerPoints];
 
   // ---------- Red alerts derived from inventory ----------
