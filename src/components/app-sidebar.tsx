@@ -8,6 +8,7 @@ import {
   Siren,
   Calculator,
   Settings as SettingsIcon,
+  ShoppingCart,
 } from "lucide-react";
 import logoAsset from "@/assets/farm-alert-logo.jpg.asset.json";
 
@@ -29,6 +30,7 @@ const items = [
   { title: "Africa Operations Map Activities", url: "/map", icon: Map },
   { title: "Sales", url: "/sales", icon: TrendingUp },
   { title: "Inventory", url: "/inventory", icon: Boxes },
+  { title: "Procurement", url: "/procurement", icon: ShoppingCart },
   { title: "Customers", url: "/customers", icon: Users },
   { title: "Accounting", url: "/accounting", icon: Calculator },
   { title: "Red Alerts", url: "/alerts", icon: Siren },
@@ -37,6 +39,7 @@ const items = [
 
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isProcurement = pathname === "/procurement";
 
   return (
     <Sidebar collapsible="icon">
@@ -88,11 +91,11 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border">
         <div className="flex items-center gap-2 px-2 py-2 group-data-[collapsible=icon]:hidden">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground">
-            FK
+            {isProcurement ? "PM" : "FK"}
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-xs font-medium text-sidebar-foreground">Dr. Femi Kayode</span>
-            <span className="text-[10px] text-sidebar-foreground/60">Chief Executive</span>
+            <span className="text-xs font-medium text-sidebar-foreground">{isProcurement ? "Procurement" : "Dr. Femi Kayode"}</span>
+            <span className="text-[10px] text-sidebar-foreground/60">{isProcurement ? "Procurement Manager" : "Chief Executive"}</span>
           </div>
         </div>
       </SidebarFooter>

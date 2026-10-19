@@ -7,6 +7,8 @@ import { formatNaira } from "@/lib/dashboard-data";
 import { useErpOverview } from "@/hooks/use-erp-overview";
 import { cn } from "@/lib/utils";
 import { CENTERS } from "@/lib/erp.functions";
+import { SalesForecastChart, ReorderTable, useReorderSettings } from "@/components/procurement-widgets";
+import { needsOrder, planReorders } from "@/lib/procurement";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -32,6 +34,12 @@ function OverviewPage() {
 
   const oosByCenter =
     live?.outOfStockByCenter ?? CENTERS.map((c) => ({ center: c, count: 0 }));
+
+  const [reorderSettings] = useReorderSettings();
+  const reorders = live ? planReorders(live.procurement, reorderSettings) : [];
+  const orderNow = reorders.filter(needsOrder);
+  const orderSoonCount = reorders.filter((l) => l.status === "order-soon").length;
+  const forecast3mRevenue = live?.procurement.forecastRevenue.reduce((a, b) => a + b, 0) ?? 0;
 
   const goalPct = live ? Math.min(100, (live.mtdRevenue / Math.max(live.monthGoalNaira, 1)) * 100) : 0;
 
@@ -200,6 +208,33 @@ function OverviewPage() {
               <CenterInventoryBlock ci={ci} />
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Procurement: 3-month sales forecast + reorder alerts */}
+      <section className="rounded-xl border border-border bg-card p-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Procurement · 3-Month Sales Forecast & Reorder Alerts</h2>
+            <p className="text-xs text-muted-foreground">
+              Next 3 months: <strong>{formatNaira(forecast3mRevenue)}</strong> forecast ({live?.procurement.forecastLabels.join(", ") ?? "—"}) ·{" "}
+              <strong className="text-destructive">{orderNow.length}</strong> products to order now ·{" "}
+              <strong className="text-warn">{orderSoonCount}</strong> within 2 weeks
+            </p>
+          </div>
+          <a href="/procurement" className="inline-flex items-center gap-1 text-xs font-medium text-brand-navy hover:text-brand-green">
+            Open procurement dashboard <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div>
+            <h3 className="mb-1 text-sm font-semibold text-foreground">Monthly revenue · actual vs forecast</h3>
+            <SalesForecastChart data={live?.procurement} metric="revenue" height={240} />
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-foreground">Most urgent reorders</h3>
+            <ReorderTable lines={orderNow.slice(0, 6)} compact />
+          </div>
         </div>
       </section>
 

@@ -16,6 +16,7 @@ import {
   type AddressRow,
   type PaymentEntry,
 } from "./erp.server";
+import { buildProcurement, type ProcurementData } from "./procurement";
 
 // === Canonical 8 distribution centers ============================
 export const CENTERS = [
@@ -198,6 +199,8 @@ export type ErpOverviewOK = {
   redAlertsByCenter: { center: Center; alerts: { title: string; severity: "critical" | "warning" }[] }[];
   // AI summary inputs
   aiSummary: string;
+  // Procurement: sales qty by period, 3-month forecast, reorder inputs
+  procurement: ProcurementData;
 };
 
 export type ErpOverview = ErpOverviewOK | { ok: false; error: string };
@@ -640,6 +643,27 @@ function summarise(
     `Recommendation: rebalance stock from Lagos/Abuja DCs to ${weakCenter?.center}, push a closed-loop promo to the top 10 customers to lift repeat orders, ` +
     `and have field reps activate ${newCustomersThisWeek} fresh partner leads this week. Hitting ₦250M by August requires +${Math.max(0, ((monthGoalNaira - mtdRevenue) / 1_000_000)).toFixed(1)}M more this month.`;
 
+  // ---------- Procurement ----------
+  const procurement = buildProcurement(
+    approvedItems.map((it) => ({
+      date: invoiceByName.get(it.parent)?.posting_date ?? "",
+      itemCode: it.item_code,
+      item: it.item_name ?? it.item_code,
+      qty: Number(it.qty ?? 0),
+      revenue: itemRevenue(it),
+      center: itemCenter(it),
+    })),
+    [...stockByCenter.entries()].flatMap(([center, rows]) =>
+      rows.map((r) => ({
+        itemCode: String(r.item_code),
+        item: String(r.item_name ?? r.item_code),
+        center,
+        qty: Number(r.bal_qty ?? 0),
+      })),
+    ),
+    now,
+  );
+
   return {
     ok: true,
     fetchedAt: new Date().toISOString(),
@@ -668,6 +692,7 @@ function summarise(
     regionMapPoints,
     redAlertsByCenter,
     aiSummary,
+    procurement,
   };
 }
 

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SalesRouteImport } from './routes/sales'
+import { Route as ProcurementRouteImport } from './routes/procurement'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as CustomersRouteImport } from './routes/customers'
@@ -26,6 +27,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const SalesRoute = SalesRouteImport.update({
   id: '/sales',
   path: '/sales',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProcurementRoute = ProcurementRouteImport.update({
+  id: '/procurement',
+  path: '/procurement',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MapRoute = MapRouteImport.update({
@@ -66,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/map': typeof MapRoute
+  '/procurement': typeof ProcurementRoute
   '/sales': typeof SalesRoute
   '/settings': typeof SettingsRoute
 }
@@ -76,6 +83,7 @@ export interface FileRoutesByTo {
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/map': typeof MapRoute
+  '/procurement': typeof ProcurementRoute
   '/sales': typeof SalesRoute
   '/settings': typeof SettingsRoute
 }
@@ -87,6 +95,7 @@ export interface FileRoutesById {
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/map': typeof MapRoute
+  '/procurement': typeof ProcurementRoute
   '/sales': typeof SalesRoute
   '/settings': typeof SettingsRoute
 }
@@ -99,6 +108,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/inventory'
     | '/map'
+    | '/procurement'
     | '/sales'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
@@ -109,6 +119,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/inventory'
     | '/map'
+    | '/procurement'
     | '/sales'
     | '/settings'
   id:
@@ -119,6 +130,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/inventory'
     | '/map'
+    | '/procurement'
     | '/sales'
     | '/settings'
   fileRoutesById: FileRoutesById
@@ -130,6 +142,7 @@ export interface RootRouteChildren {
   CustomersRoute: typeof CustomersRoute
   InventoryRoute: typeof InventoryRoute
   MapRoute: typeof MapRoute
+  ProcurementRoute: typeof ProcurementRoute
   SalesRoute: typeof SalesRoute
   SettingsRoute: typeof SettingsRoute
 }
@@ -148,6 +161,13 @@ declare module '@tanstack/react-router' {
       path: '/sales'
       fullPath: '/sales'
       preLoaderRoute: typeof SalesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/procurement': {
+      id: '/procurement'
+      path: '/procurement'
+      fullPath: '/procurement'
+      preLoaderRoute: typeof ProcurementRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/map': {
@@ -202,9 +222,20 @@ const rootRouteChildren: RootRouteChildren = {
   CustomersRoute: CustomersRoute,
   InventoryRoute: InventoryRoute,
   MapRoute: MapRoute,
+  ProcurementRoute: ProcurementRoute,
   SalesRoute: SalesRoute,
   SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
